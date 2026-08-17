@@ -1,0 +1,72 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pdfreader
+      POSTGRES_PASSWORD: pdfreader
+      POSTGRES_DB: pdfreader
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pdfreader -d pdfreader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pdf-reader-net
+
+  extractor:
+    build: ./extractor
+    environment:
+      PORT: "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pdf-reader-net
+
+  backend:
+    # NOTE: builds/starts only once backend/cmd/server exists and exposes
+    # GET /health on :8080 - both intentionally not implemented yet (see
+    # backend/Dockerfile). Left wired up here so it works unmodified once
+    # the orchestrator adds them.
+    build: ./backend
+    environment:
+      DATABASE_URL: postgres://pdfreader:pdfreader@postgres:5432/pdfreader?sslmode=disable
+      EXTRACTOR_URL: http://extractor:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      extractor:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pdf-reader-net
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8081:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pdf-reader-net
+
+networks:
+  pdf-reader-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
