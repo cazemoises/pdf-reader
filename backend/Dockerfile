@@ -3,7 +3,7 @@
 # internal/ports/doc.go) - the orchestrator's Dev agent adds cmd/server as
 # one of its first backlog tasks. Until then, `docker build` on this
 # directory will fail with "no Go files in ./cmd/server", which is expected.
-FROM golang:1.21-bookworm AS build
+FROM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod ./
 RUN go mod download
