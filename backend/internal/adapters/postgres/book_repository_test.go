@@ -68,7 +68,7 @@ func openTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("applying migration: %v", err)
 	}
 
-	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE books"); err != nil {
+	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE books CASCADE"); err != nil {
 		t.Fatalf("truncating books table: %v", err)
 	}
 
