@@ -125,9 +125,10 @@ func TestHighlightRepository_CreateThenFindByID_RoundTrips(t *testing.T) {
 	}
 
 	if got.ID != want.ID || got.BookID != want.BookID || got.PageNumber != want.PageNumber ||
-		got.Box != want.Box || got.Color != want.Color || !got.CreatedAt.Equal(want.CreatedAt) {
+		got.Box != want.Box || got.Color != want.Color {
 		t.Errorf("FindByID = %+v, want %+v", got, want)
 	}
+	assertTimesClose(t, "CreatedAt", got.CreatedAt, want.CreatedAt)
 }
 
 func TestHighlightRepository_FindByID_NotFoundReturnsErrHighlightNotFound(t *testing.T) {
