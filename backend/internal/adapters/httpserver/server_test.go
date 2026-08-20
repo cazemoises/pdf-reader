@@ -1,0 +1,229 @@
+// Package httpserver_test contains integration tests for the HTTP adapter
+// (internal/adapters/httpserver.Server). These tests run against a real
+// Postgres database and a real HTTPTextExtractor pointed at a fake extractor
+// HTTP server - no mocks or fakes for the database itself. To run them
+// locally:
+//
+//  1. Start a Postgres instance with the same credentials the project's
+//     docker-compose.yml uses. That file does not publish a host port for
+//     the postgres service, so either add a `ports: ["5432:5432"]`
+//     override to it, or run a standalone container with matching
+//     credentials:
+//
+//       docker run --rm -d --name pdfreader-postgres \
+//         -e POSTGRES_USER=pdfreader -e POSTGRES_PASSWORD=pdfreader -e POSTGRES_DB=pdfreader \
+//         -p 5432:5432 postgres:16-alpine
+//
+//  2. Export DATABASE_URL pointing at it, e.g.:
+//
+//       export DATABASE_URL="postgres://pdfreader:pdfreader@localhost:5432/pdfreader?sslmode=disable"
+//
+//  3. Run: go test ./internal/adapters/httpserver/...
+//
+// The schemas in backend/migrations/0001_create_books.sql,
+// backend/migrations/0002_create_pages.sql and
+// backend/migrations/0003_create_highlights.sql are applied by the tests
+// themselves on setup, so no separate migration step is required. If
+// DATABASE_URL is unset, all tests in this file are skipped.
+package httpserver_test
+
+import (
+	"bytes"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"testing"
+
+	_ "github.com/lib/pq"
+
+	"pdf-reader/backend/internal/adapters/filestorage"
+	"pdf-reader/backend/internal/adapters/httpextractor"
+	"pdf-reader/backend/internal/adapters/httpserver"
+	"pdf-reader/backend/internal/adapters/postgres"
+	"pdf-reader/backend/internal/domain"
+	"pdf-reader/backend/internal/ports"
+)
+
+func openTestDBForServer(t *testing.T) *sql.DB {
+	t.Helper()
+
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set; skipping httpserver integration test (see package doc comment for setup instructions)")
+	}
+
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		t.Fatalf("opening database: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	ctx := context.Background()
+
+	if err := db.PingContext(ctx); err != nil {
+		t.Fatalf("pinging database: %v", err)
+	}
+
+	for _, migration := range []string{"0001_create_books.sql", "0002_create_pages.sql", "0003_create_highlights.sql"} {
+		schema, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", migration))
+		if err != nil {
+			t.Fatalf("reading migration file %s: %v", migration, err)
+		}
+		if _, err := db.ExecContext(ctx, string(schema)); err != nil {
+			t.Fatalf("applying migration %s: %v", migration, err)
+		}
+	}
+
+	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE highlights"); err != nil {
+		t.Fatalf("truncating highlights table: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE pages"); err != nil {
+		t.Fatalf("truncating pages table: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE books CASCADE"); err != nil {
+		t.Fatalf("truncating books table: %v", err)
+	}
+
+	return db
+}
+
+// fakeExtractorServer stands in for the real Python extractor service so
+// these tests stay hermetic. It always responds with the given status code
+// and body for POST /extract.
+func fakeExtractorServer(t *testing.T, status int, body string) *httptest.Server {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		fmt.Fprint(w, body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+type testDeps struct {
+	bookRepo      ports.BookRepository
+	pageRepo      ports.PageRepository
+	highlightRepo ports.HighlightRepository
+}
+
+// newTestServer wires a real Server against the given db and a fake
+// extractor server, returning an httptest.Server exposing it over HTTP.
+func newTestServer(t *testing.T, db *sql.DB, extractorURL string) (*httptest.Server, testDeps) {
+	t.Helper()
+
+	deps := testDeps{
+		bookRepo:      postgres.NewBookRepository(db),
+		pageRepo:      postgres.NewPageRepository(db),
+		highlightRepo: postgres.NewHighlightRepository(db),
+	}
+	extractor := httpextractor.NewHTTPTextExtractor(extractorURL, nil)
+	storage := filestorage.NewFileSystemStorage(t.TempDir())
+
+	server := httpserver.NewServer(deps.bookRepo, deps.pageRepo, deps.highlightRepo, extractor, storage)
+	httpSrv := httptest.NewServer(server)
+	t.Cleanup(httpSrv.Close)
+
+	return httpSrv, deps
+}
+
+// multipartBody builds a multipart/form-data body with a text field and a
+// file field, returning the body reader and its Content-Type header value.
+func multipartBody(t *testing.T, fieldName, fieldValue, fileFieldName, filename, fileContent string) (io.Reader, string) {
+	t.Helper()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	if err := writer.WriteField(fieldName, fieldValue); err != nil {
+		t.Fatalf("writing field %s: %v", fieldName, err)
+	}
+
+	part, err := writer.CreateFormFile(fileFieldName, filename)
+	if err != nil {
+		t.Fatalf("creating form file: %v", err)
+	}
+	if _, err := part.Write([]byte(fileContent)); err != nil {
+		t.Fatalf("writing file content: %v", err)
+	}
+
+	if err := writer.Close(); err != nil {
+		t.Fatalf("closing multipart writer: %v", err)
+	}
+
+	return body, writer.FormDataContentType()
+}
+
+// bookJSON mirrors domain.Book's exported fields (no json tags on the
+// domain type, so encoding/json uses the Go field names as-is).
+type bookJSON struct {
+	ID         string `json:"ID"`
+	Title      string `json:"Title"`
+	SourcePath string `json:"SourcePath"`
+	Status     string `json:"Status"`
+}
+
+func TestPostBooks_CreatesBookExtractsPagesAndReturnsCreated(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{
+		"pages": [
+			{"page_number": 1, "width": 612, "height": 792, "blocks": [{"text": "hello"}]},
+			{"page_number": 2, "width": 612, "height": 792, "blocks": [{"text": "world"}]}
+		]
+	}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+
+	body, contentType := multipartBody(t, "title", "My Book", "file", "book.pdf", "fake pdf bytes")
+
+	resp, err := http.Post(httpSrv.URL+"/books", contentType, body)
+	if err != nil {
+		t.Fatalf("POST /books: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusCreated)
+	}
+
+	var got bookJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.ID == "" {
+		t.Error("response ID is empty, want a generated id")
+	}
+	if got.Title != "My Book" {
+		t.Errorf("Title = %q, want %q", got.Title, "My Book")
+	}
+	if got.Status != string(domain.BookStatusReady) {
+		t.Errorf("Status = %q, want %q", got.Status, domain.BookStatusReady)
+	}
+
+	ctx := context.Background()
+	storedBook, err := deps.bookRepo.FindByID(ctx, got.ID)
+	if err != nil {
+		t.Fatalf("FindByID: unexpected error: %v", err)
+	}
+	if storedBook.Status != domain.BookStatusReady {
+		t.Errorf("stored book status = %q, want %q", storedBook.Status, domain.BookStatusReady)
+	}
+
+	pages, err := deps.pageRepo.ListByBookID(ctx, got.ID)
+	if err != nil {
+		t.Fatalf("ListByBookID: unexpected error: %v", err)
+	}
+	if len(pages) != 2 {
+		t.Fatalf("len(pages) = %d, want 2", len(pages))
+	}
+	if pages[0].Text != "hello" || pages[1].Text != "world" {
+		t.Errorf("pages text = %q, %q, want %q, %q", pages[0].Text, pages[1].Text, "hello", "world")
+	}
+}
