@@ -88,7 +88,7 @@ func (s *Server) handleCreateBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pages, err := s.extractText(ctx, book)
+	pages, err := s.extractPages(ctx, book)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, book)
 		return
@@ -113,10 +113,10 @@ func (s *Server) handleCreateBook(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, book)
 }
 
-// extractText opens the book's stored file and runs the extractor against
+// extractPages opens the book's stored file and runs the extractor against
 // it. On failure it marks the book as failed and persists that change
-// before returning the error.
-func (s *Server) extractText(ctx context.Context, book *domain.Book) ([]*domain.Page, error) {
+// before returning the error, so the caller can still report the book's id.
+func (s *Server) extractPages(ctx context.Context, book *domain.Book) ([]*domain.Page, error) {
 	reader, err := s.storage.Open(ctx, book.SourcePath)
 	if err != nil {
 		s.markFailed(ctx, book)
