@@ -39,6 +39,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "github.com/lib/pq"
@@ -382,5 +383,64 @@ func TestGetPage_NotFoundReturns404(t *testing.T) {
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
+// boxJSON mirrors domain.BoundingBox's exported fields.
+type boxJSON struct {
+	X      float64 `json:"X"`
+	Y      float64 `json:"Y"`
+	Width  float64 `json:"Width"`
+	Height float64 `json:"Height"`
+}
+
+// highlightJSON mirrors domain.Highlight's exported fields (no json tags on
+// the domain type, so encoding/json uses the Go field names as-is).
+type highlightJSON struct {
+	ID         string  `json:"ID"`
+	BookID     string  `json:"BookID"`
+	PageNumber int     `json:"PageNumber"`
+	Box        boxJSON `json:"Box"`
+	Color      string  `json:"Color"`
+}
+
+func TestPostHighlights_CreatesHighlight(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	book := mustCreateTestBookDirect(t, deps, "book-highlight-post")
+
+	reqBody := `{"pageNumber": 1, "box": {"x": 10, "y": 20, "width": 100, "height": 30}, "color": "yellow"}`
+
+	resp, err := http.Post(fmt.Sprintf("%s/books/%s/highlights", httpSrv.URL, book.ID), "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST /books/{id}/highlights: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusCreated)
+	}
+
+	var got highlightJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.ID == "" {
+		t.Error("response ID is empty, want a generated id")
+	}
+	if got.BookID != book.ID || got.PageNumber != 1 || got.Color != "yellow" {
+		t.Errorf("got = %+v, want BookID=%q, PageNumber=1, Color=yellow", got, book.ID)
+	}
+	if got.Box != (boxJSON{X: 10, Y: 20, Width: 100, Height: 30}) {
+		t.Errorf("Box = %+v, want {10 20 100 30}", got.Box)
+	}
+
+	stored, err := deps.highlightRepo.FindByID(context.Background(), got.ID)
+	if err != nil {
+		t.Fatalf("FindByID: unexpected error: %v", err)
+	}
+	if stored.BookID != book.ID {
+		t.Errorf("stored highlight BookID = %q, want %q", stored.BookID, book.ID)
 	}
 }
