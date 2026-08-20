@@ -492,3 +492,18 @@ func TestGetHighlights_ListsHighlightsForBook(t *testing.T) {
 		}
 	}
 }
+
+// TestHealth_ReturnsOK does not need Postgres or the fake extractor: the
+// health check touches none of the Server's ports.
+func TestHealth_ReturnsOK(t *testing.T) {
+	server := httpserver.NewServer(nil, nil, nil, nil, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rec := httptest.NewRecorder()
+
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
