@@ -15,10 +15,10 @@ var (
 
 // BoundingBox describes the position and size of a highlighted region on a page.
 type BoundingBox struct {
-	X      float64
-	Y      float64
-	Width  float64
-	Height float64
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
 }
 
 // IsValid reports whether the box has a non-negative origin and a positive size.
@@ -28,12 +28,12 @@ func (bb BoundingBox) IsValid() bool {
 
 // Highlight is a user-selected, colored region of text on a Book's page.
 type Highlight struct {
-	ID         string
-	BookID     string
-	PageNumber int
-	Box        BoundingBox
-	Color      string
-	CreatedAt  time.Time
+	ID         string      `json:"id"`
+	BookID     string      `json:"bookId"`
+	PageNumber int         `json:"pageNumber"`
+	Box        BoundingBox `json:"box"`
+	Color      string      `json:"color"`
+	CreatedAt  time.Time   `json:"createdAt"`
 }
 
 // NewHighlight creates a Highlight for the given book and page.

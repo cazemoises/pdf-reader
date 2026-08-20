@@ -23,12 +23,12 @@ var (
 
 // Book is a PDF document tracked by the reader.
 type Book struct {
-	ID         string
-	Title      string
-	SourcePath string
-	Status     BookStatus
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID         string     `json:"id"`
+	Title      string     `json:"title"`
+	SourcePath string     `json:"sourcePath"`
+	Status     BookStatus `json:"status"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	UpdatedAt  time.Time  `json:"updatedAt"`
 }
 
 // NewBook creates a Book in the processing status, ready for extraction.

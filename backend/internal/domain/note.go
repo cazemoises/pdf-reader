@@ -14,11 +14,11 @@ var (
 // Note is a piece of free-text annotation attached to a Book, and optionally
 // scoped to one of its Highlights.
 type Note struct {
-	ID          string
-	BookID      string
-	HighlightID *string
-	Content     string
-	CreatedAt   time.Time
+	ID          string    `json:"id"`
+	BookID      string    `json:"bookId"`
+	HighlightID *string   `json:"highlightId,omitempty"`
+	Content     string    `json:"content"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 // NewNote creates a Note for a book. highlightID may be nil for a note that

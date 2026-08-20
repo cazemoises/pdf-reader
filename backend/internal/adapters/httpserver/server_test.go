@@ -163,13 +163,12 @@ func multipartBody(t *testing.T, fieldName, fieldValue, fileFieldName, filename,
 	return body, writer.FormDataContentType()
 }
 
-// bookJSON mirrors domain.Book's exported fields (no json tags on the
-// domain type, so encoding/json uses the Go field names as-is).
+// bookJSON mirrors domain.Book's camelCase json tags.
 type bookJSON struct {
-	ID         string `json:"ID"`
-	Title      string `json:"Title"`
-	SourcePath string `json:"SourcePath"`
-	Status     string `json:"Status"`
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	SourcePath string `json:"sourcePath"`
+	Status     string `json:"status"`
 }
 
 func TestPostBooks_CreatesBookExtractsPagesAndReturnsCreated(t *testing.T) {
@@ -320,14 +319,13 @@ func TestGetBook_NotFoundReturns404(t *testing.T) {
 	}
 }
 
-// pageJSON mirrors domain.Page's exported fields (no json tags on the
-// domain type, so encoding/json uses the Go field names as-is).
+// pageJSON mirrors domain.Page's camelCase json tags.
 type pageJSON struct {
-	BookID string  `json:"BookID"`
-	Number int     `json:"Number"`
-	Text   string  `json:"Text"`
-	Width  float64 `json:"Width"`
-	Height float64 `json:"Height"`
+	BookID string  `json:"bookId"`
+	Number int     `json:"number"`
+	Text   string  `json:"text"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
 }
 
 func mustCreateTestPageDirect(t *testing.T, deps testDeps, bookID string, number int) *domain.Page {
@@ -386,22 +384,21 @@ func TestGetPage_NotFoundReturns404(t *testing.T) {
 	}
 }
 
-// boxJSON mirrors domain.BoundingBox's exported fields.
+// boxJSON mirrors domain.BoundingBox's camelCase json tags.
 type boxJSON struct {
-	X      float64 `json:"X"`
-	Y      float64 `json:"Y"`
-	Width  float64 `json:"Width"`
-	Height float64 `json:"Height"`
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
 }
 
-// highlightJSON mirrors domain.Highlight's exported fields (no json tags on
-// the domain type, so encoding/json uses the Go field names as-is).
+// highlightJSON mirrors domain.Highlight's camelCase json tags.
 type highlightJSON struct {
-	ID         string  `json:"ID"`
-	BookID     string  `json:"BookID"`
-	PageNumber int     `json:"PageNumber"`
-	Box        boxJSON `json:"Box"`
-	Color      string  `json:"Color"`
+	ID         string  `json:"id"`
+	BookID     string  `json:"bookId"`
+	PageNumber int     `json:"pageNumber"`
+	Box        boxJSON `json:"box"`
+	Color      string  `json:"color"`
 }
 
 func TestPostHighlights_CreatesHighlight(t *testing.T) {

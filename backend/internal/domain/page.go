@@ -11,11 +11,11 @@ var (
 // Page is a single extracted page of a Book, including its text and the
 // physical dimensions needed to later map highlight coordinates.
 type Page struct {
-	BookID string
-	Number int
-	Text   string
-	Width  float64
-	Height float64
+	BookID string  `json:"bookId"`
+	Number int     `json:"number"`
+	Text   string  `json:"text"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
 }
 
 // NewPage creates a Page for the given book at the given 1-based page number.

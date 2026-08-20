@@ -13,10 +13,10 @@ var (
 
 // ReadingProgress tracks how far a user has read into a Book.
 type ReadingProgress struct {
-	BookID     string
-	LastPage   int
-	Percentage float64
-	UpdatedAt  time.Time
+	BookID     string    `json:"bookId"`
+	LastPage   int       `json:"lastPage"`
+	Percentage float64   `json:"percentage"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 // NewReadingProgress creates a ReadingProgress record for a book.
