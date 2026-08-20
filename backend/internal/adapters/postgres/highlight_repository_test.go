@@ -71,7 +71,7 @@ func openTestDBForHighlights(t *testing.T) *sql.DB {
 		}
 	}
 
-	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE highlights"); err != nil {
+	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE highlights CASCADE"); err != nil {
 		t.Fatalf("truncating highlights table: %v", err)
 	}
 	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE books CASCADE"); err != nil {
