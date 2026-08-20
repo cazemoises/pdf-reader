@@ -44,6 +44,7 @@ func NewServer(
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /books", s.handleCreateBook)
+	mux.HandleFunc("GET /books/{id}", s.handleGetBook)
 	s.mux = mux
 
 	return s
@@ -111,6 +112,16 @@ func (s *Server) handleCreateBook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, book)
+}
+
+func (s *Server) handleGetBook(w http.ResponseWriter, r *http.Request) {
+	book, err := s.bookRepo.FindByID(r.Context(), r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "book not found", http.StatusNotFound)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, book)
 }
 
 // extractPages opens the book's stored file and runs the extractor against
