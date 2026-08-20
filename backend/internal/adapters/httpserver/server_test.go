@@ -318,3 +318,69 @@ func TestGetBook_NotFoundReturns404(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
 	}
 }
+
+// pageJSON mirrors domain.Page's exported fields (no json tags on the
+// domain type, so encoding/json uses the Go field names as-is).
+type pageJSON struct {
+	BookID string  `json:"BookID"`
+	Number int     `json:"Number"`
+	Text   string  `json:"Text"`
+	Width  float64 `json:"Width"`
+	Height float64 `json:"Height"`
+}
+
+func mustCreateTestPageDirect(t *testing.T, deps testDeps, bookID string, number int) *domain.Page {
+	t.Helper()
+
+	page, err := domain.NewPage(bookID, number, "page text", 612, 792)
+	if err != nil {
+		t.Fatalf("building test page: %v", err)
+	}
+	if err := deps.pageRepo.Create(context.Background(), page); err != nil {
+		t.Fatalf("creating test page: %v", err)
+	}
+	return page
+}
+
+func TestGetPage_ReturnsPage(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	book := mustCreateTestBookDirect(t, deps, "book-page-get-found")
+	mustCreateTestPageDirect(t, deps, book.ID, 1)
+
+	resp, err := http.Get(fmt.Sprintf("%s/books/%s/pages/1", httpSrv.URL, book.ID))
+	if err != nil {
+		t.Fatalf("GET /books/{id}/pages/{number}: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var got pageJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.Number != 1 || got.Text != "page text" {
+		t.Errorf("got = %+v, want Number=1, Text=%q", got, "page text")
+	}
+}
+
+func TestGetPage_NotFoundReturns404(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	book := mustCreateTestBookDirect(t, deps, "book-page-get-missing")
+
+	resp, err := http.Get(fmt.Sprintf("%s/books/%s/pages/99", httpSrv.URL, book.ID))
+	if err != nil {
+		t.Fatalf("GET /books/{id}/pages/{number}: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
