@@ -47,6 +47,7 @@ func NewServer(
 	mux.HandleFunc("POST /books", s.handleCreateBook)
 	mux.HandleFunc("GET /books/{id}", s.handleGetBook)
 	mux.HandleFunc("GET /books/{id}/pages/{number}", s.handleGetPage)
+	mux.HandleFunc("POST /books/{id}/highlights", s.handleCreateHighlight)
 	s.mux = mux
 
 	return s
@@ -147,6 +148,33 @@ func (s *Server) handleGetPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Error(w, "page not found", http.StatusNotFound)
+}
+
+type createHighlightRequest struct {
+	PageNumber int                `json:"pageNumber"`
+	Box        domain.BoundingBox `json:"box"`
+	Color      string             `json:"color"`
+}
+
+func (s *Server) handleCreateHighlight(w http.ResponseWriter, r *http.Request) {
+	var req createHighlightRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	highlight, err := domain.NewHighlight(newID(), r.PathValue("id"), req.PageNumber, req.Box, req.Color)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.highlightRepo.Create(r.Context(), highlight); err != nil {
+		http.Error(w, "creating highlight", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, highlight)
 }
 
 // extractPages opens the book's stored file and runs the extractor against
