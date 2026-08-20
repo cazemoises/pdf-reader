@@ -58,6 +58,7 @@ func NewServer(
 	mux.HandleFunc("POST /books/{id}/notes", s.handleCreateNote)
 	mux.HandleFunc("GET /books/{id}/notes", s.handleListNotes)
 	mux.HandleFunc("GET /books/{id}/progress", s.handleGetProgress)
+	mux.HandleFunc("PUT /books/{id}/progress", s.handleSaveProgress)
 	mux.HandleFunc("GET /health", handleHealth)
 	s.mux = mux
 
@@ -274,6 +275,40 @@ func (s *Server) handleGetProgress(w http.ResponseWriter, r *http.Request) {
 	progress, err := s.progressRepo.GetByBookID(ctx, bookID)
 	if err != nil {
 		http.Error(w, "reading progress not found", http.StatusNotFound)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, progress)
+}
+
+type saveProgressRequest struct {
+	LastPage   int     `json:"lastPage"`
+	Percentage float64 `json:"percentage"`
+}
+
+func (s *Server) handleSaveProgress(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	bookID := r.PathValue("id")
+
+	if _, err := s.bookRepo.FindByID(ctx, bookID); err != nil {
+		http.Error(w, "book not found", http.StatusNotFound)
+		return
+	}
+
+	var req saveProgressRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	progress, err := domain.NewReadingProgress(bookID, req.LastPage, req.Percentage)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.progressRepo.Save(ctx, progress); err != nil {
+		http.Error(w, "saving reading progress", http.StatusInternalServerError)
 		return
 	}
 
