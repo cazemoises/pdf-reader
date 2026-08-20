@@ -261,3 +261,60 @@ func TestPostBooks_ExtractionFailure_MarksBookFailedAndReturnsError(t *testing.T
 		t.Errorf("stored book status = %q, want %q", storedBook.Status, domain.BookStatusFailed)
 	}
 }
+
+func mustCreateTestBookDirect(t *testing.T, deps testDeps, id string) *domain.Book {
+	t.Helper()
+
+	book, err := domain.NewBook(id, "Test Book "+id, "/tmp/"+id+".pdf")
+	if err != nil {
+		t.Fatalf("building test book: %v", err)
+	}
+	if err := deps.bookRepo.Create(context.Background(), book); err != nil {
+		t.Fatalf("creating test book: %v", err)
+	}
+	return book
+}
+
+func TestGetBook_ReturnsBook(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	book := mustCreateTestBookDirect(t, deps, "book-get-found")
+
+	resp, err := http.Get(httpSrv.URL + "/books/" + book.ID)
+	if err != nil {
+		t.Fatalf("GET /books/{id}: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var got bookJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.ID != book.ID {
+		t.Errorf("ID = %q, want %q", got.ID, book.ID)
+	}
+	if got.Title != book.Title {
+		t.Errorf("Title = %q, want %q", got.Title, book.Title)
+	}
+}
+
+func TestGetBook_NotFoundReturns404(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, _ := newTestServer(t, db, extractorSrv.URL)
+
+	resp, err := http.Get(httpSrv.URL + "/books/does-not-exist")
+	if err != nil {
+		t.Fatalf("GET /books/{id}: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
