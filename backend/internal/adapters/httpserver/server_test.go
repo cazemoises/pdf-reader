@@ -802,6 +802,102 @@ func TestGetProgress_BookNotFound_Returns404(t *testing.T) {
 	}
 }
 
+func putRequest(t *testing.T, url, body string) *http.Response {
+	t.Helper()
+
+	req, err := http.NewRequest(http.MethodPut, url, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("building PUT request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PUT %s: unexpected error: %v", url, err)
+	}
+	return resp
+}
+
+func TestPutProgress_CreatesProgress(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	book := mustCreateTestBookDirect(t, deps, "book-progress-put-create")
+
+	resp := putRequest(t, fmt.Sprintf("%s/books/%s/progress", httpSrv.URL, book.ID), `{"lastPage": 3, "percentage": 20}`)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var got progressJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.BookID != book.ID || got.LastPage != 3 || got.Percentage != 20 {
+		t.Errorf("got = %+v, want BookID=%q, LastPage=3, Percentage=20", got, book.ID)
+	}
+
+	stored, err := deps.progressRepo.GetByBookID(context.Background(), book.ID)
+	if err != nil {
+		t.Fatalf("GetByBookID: unexpected error: %v", err)
+	}
+	if stored.LastPage != 3 || stored.Percentage != 20 {
+		t.Errorf("stored progress = %+v, want LastPage=3, Percentage=20", stored)
+	}
+}
+
+func TestPutProgress_UpdatesExistingProgress(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	book := mustCreateTestBookDirect(t, deps, "book-progress-put-update")
+	mustCreateTestProgressDirect(t, deps, book.ID, 1, 5)
+
+	resp := putRequest(t, fmt.Sprintf("%s/books/%s/progress", httpSrv.URL, book.ID), `{"lastPage": 10, "percentage": 90}`)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	stored, err := deps.progressRepo.GetByBookID(context.Background(), book.ID)
+	if err != nil {
+		t.Fatalf("GetByBookID: unexpected error: %v", err)
+	}
+	if stored.LastPage != 10 || stored.Percentage != 90 {
+		t.Errorf("stored progress = %+v, want LastPage=10, Percentage=90", stored)
+	}
+}
+
+func TestPutProgress_BookNotFound_Returns404(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, _ := newTestServer(t, db, extractorSrv.URL)
+
+	resp := putRequest(t, httpSrv.URL+"/books/does-not-exist/progress", `{"lastPage": 1, "percentage": 10}`)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestPutProgress_InvalidPercentage_Returns400(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	book := mustCreateTestBookDirect(t, deps, "book-progress-put-invalid")
+
+	resp := putRequest(t, fmt.Sprintf("%s/books/%s/progress", httpSrv.URL, book.ID), `{"lastPage": 1, "percentage": 150}`)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
 // TestHealth_ReturnsOK does not need Postgres or the fake extractor: the
 // health check touches none of the Server's ports.
 func TestHealth_ReturnsOK(t *testing.T) {
