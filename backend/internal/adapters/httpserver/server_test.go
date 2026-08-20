@@ -72,7 +72,7 @@ func openTestDBForServer(t *testing.T) *sql.DB {
 		t.Fatalf("pinging database: %v", err)
 	}
 
-	for _, migration := range []string{"0001_create_books.sql", "0002_create_pages.sql", "0003_create_highlights.sql"} {
+	for _, migration := range []string{"0001_create_books.sql", "0002_create_pages.sql", "0003_create_highlights.sql", "0004_create_notes.sql", "0005_create_reading_progress.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", migration))
 		if err != nil {
 			t.Fatalf("reading migration file %s: %v", migration, err)
@@ -82,6 +82,12 @@ func openTestDBForServer(t *testing.T) *sql.DB {
 		}
 	}
 
+	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE notes CASCADE"); err != nil {
+		t.Fatalf("truncating notes table: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE reading_progress"); err != nil {
+		t.Fatalf("truncating reading_progress table: %v", err)
+	}
 	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE highlights CASCADE"); err != nil {
 		t.Fatalf("truncating highlights table: %v", err)
 	}
@@ -114,6 +120,8 @@ type testDeps struct {
 	bookRepo      ports.BookRepository
 	pageRepo      ports.PageRepository
 	highlightRepo ports.HighlightRepository
+	noteRepo      ports.NoteRepository
+	progressRepo  ports.ReadingProgressRepository
 }
 
 // newTestServer wires a real Server against the given db and a fake
@@ -125,11 +133,13 @@ func newTestServer(t *testing.T, db *sql.DB, extractorURL string) (*httptest.Ser
 		bookRepo:      postgres.NewBookRepository(db),
 		pageRepo:      postgres.NewPageRepository(db),
 		highlightRepo: postgres.NewHighlightRepository(db),
+		noteRepo:      postgres.NewNoteRepository(db),
+		progressRepo:  postgres.NewReadingProgressRepository(db),
 	}
 	extractor := httpextractor.NewHTTPTextExtractor(extractorURL, nil)
 	storage := filestorage.NewFileSystemStorage(t.TempDir())
 
-	server := httpserver.NewServer(deps.bookRepo, deps.pageRepo, deps.highlightRepo, extractor, storage)
+	server := httpserver.NewServer(deps.bookRepo, deps.pageRepo, deps.highlightRepo, deps.noteRepo, deps.progressRepo, extractor, storage)
 	httpSrv := httptest.NewServer(server)
 	t.Cleanup(httpSrv.Close)
 
@@ -490,10 +500,145 @@ func TestGetHighlights_ListsHighlightsForBook(t *testing.T) {
 	}
 }
 
+// noteJSON mirrors domain.Note's camelCase json tags.
+type noteJSON struct {
+	ID          string  `json:"id"`
+	BookID      string  `json:"bookId"`
+	HighlightID *string `json:"highlightId,omitempty"`
+	Content     string  `json:"content"`
+}
+
+func TestPostNotes_CreatesNoteWithoutHighlight(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	book := mustCreateTestBookDirect(t, deps, "book-note-post")
+
+	reqBody := `{"content": "an important thought"}`
+
+	resp, err := http.Post(fmt.Sprintf("%s/books/%s/notes", httpSrv.URL, book.ID), "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST /books/{id}/notes: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusCreated)
+	}
+
+	var got noteJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.ID == "" {
+		t.Error("response ID is empty, want a generated id")
+	}
+	if got.BookID != book.ID || got.Content != "an important thought" {
+		t.Errorf("got = %+v, want BookID=%q, Content=%q", got, book.ID, "an important thought")
+	}
+	if got.HighlightID != nil {
+		t.Errorf("HighlightID = %v, want nil", *got.HighlightID)
+	}
+
+	stored, err := deps.noteRepo.FindByID(context.Background(), got.ID)
+	if err != nil {
+		t.Fatalf("FindByID: unexpected error: %v", err)
+	}
+	if stored.BookID != book.ID {
+		t.Errorf("stored note BookID = %q, want %q", stored.BookID, book.ID)
+	}
+}
+
+func TestPostNotes_CreatesNoteWithHighlight(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	book := mustCreateTestBookDirect(t, deps, "book-note-post-with-highlight")
+	highlight := mustCreateTestHighlightDirect(t, deps, "highlight-note-post", book.ID, 1)
+
+	reqBody := fmt.Sprintf(`{"content": "on this highlight", "highlightId": %q}`, highlight.ID)
+
+	resp, err := http.Post(fmt.Sprintf("%s/books/%s/notes", httpSrv.URL, book.ID), "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST /books/{id}/notes: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusCreated)
+	}
+
+	var got noteJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.HighlightID == nil || *got.HighlightID != highlight.ID {
+		t.Errorf("HighlightID = %v, want %q", got.HighlightID, highlight.ID)
+	}
+}
+
+func TestPostNotes_BookNotFound_Returns404(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, _ := newTestServer(t, db, extractorSrv.URL)
+
+	reqBody := `{"content": "orphan note"}`
+
+	resp, err := http.Post(httpSrv.URL+"/books/does-not-exist/notes", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST /books/{id}/notes: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestPostNotes_HighlightFromAnotherBook_Returns400(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	bookA := mustCreateTestBookDirect(t, deps, "book-note-post-mismatch-a")
+	bookB := mustCreateTestBookDirect(t, deps, "book-note-post-mismatch-b")
+	highlightOnB := mustCreateTestHighlightDirect(t, deps, "highlight-note-post-mismatch", bookB.ID, 1)
+
+	reqBody := fmt.Sprintf(`{"content": "wrong book highlight", "highlightId": %q}`, highlightOnB.ID)
+
+	resp, err := http.Post(fmt.Sprintf("%s/books/%s/notes", httpSrv.URL, bookA.ID), "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST /books/{id}/notes: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
+func TestPostNotes_HighlightNotFound_Returns400(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	book := mustCreateTestBookDirect(t, deps, "book-note-post-missing-highlight")
+
+	reqBody := `{"content": "dangling highlight", "highlightId": "does-not-exist"}`
+
+	resp, err := http.Post(fmt.Sprintf("%s/books/%s/notes", httpSrv.URL, book.ID), "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("POST /books/{id}/notes: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+	}
+}
+
 // TestHealth_ReturnsOK does not need Postgres or the fake extractor: the
 // health check touches none of the Server's ports.
 func TestHealth_ReturnsOK(t *testing.T) {
-	server := httpserver.NewServer(nil, nil, nil, nil, nil)
+	server := httpserver.NewServer(nil, nil, nil, nil, nil, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
