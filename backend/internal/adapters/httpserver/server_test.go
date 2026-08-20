@@ -227,3 +227,37 @@ func TestPostBooks_CreatesBookExtractsPagesAndReturnsCreated(t *testing.T) {
 		t.Errorf("pages text = %q, %q, want %q, %q", pages[0].Text, pages[1].Text, "hello", "world")
 	}
 }
+
+func TestPostBooks_ExtractionFailure_MarksBookFailedAndReturnsError(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusInternalServerError, `boom`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+
+	body, contentType := multipartBody(t, "title", "Doomed Book", "file", "book.pdf", "fake pdf bytes")
+
+	resp, err := http.Post(httpSrv.URL+"/books", contentType, body)
+	if err != nil {
+		t.Fatalf("POST /books: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+	}
+
+	var got bookJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.ID == "" {
+		t.Fatal("response ID is empty, want a generated id")
+	}
+
+	storedBook, err := deps.bookRepo.FindByID(context.Background(), got.ID)
+	if err != nil {
+		t.Fatalf("FindByID: unexpected error: %v", err)
+	}
+	if storedBook.Status != domain.BookStatusFailed {
+		t.Errorf("stored book status = %q, want %q", storedBook.Status, domain.BookStatusFailed)
+	}
+}
