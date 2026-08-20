@@ -21,6 +21,8 @@ type Server struct {
 	bookRepo      ports.BookRepository
 	pageRepo      ports.PageRepository
 	highlightRepo ports.HighlightRepository
+	noteRepo      ports.NoteRepository
+	progressRepo  ports.ReadingProgressRepository
 	extractor     ports.TextExtractor
 	storage       ports.FileStorage
 	mux           *http.ServeMux
@@ -32,6 +34,8 @@ func NewServer(
 	bookRepo ports.BookRepository,
 	pageRepo ports.PageRepository,
 	highlightRepo ports.HighlightRepository,
+	noteRepo ports.NoteRepository,
+	progressRepo ports.ReadingProgressRepository,
 	extractor ports.TextExtractor,
 	storage ports.FileStorage,
 ) *Server {
@@ -39,6 +43,8 @@ func NewServer(
 		bookRepo:      bookRepo,
 		pageRepo:      pageRepo,
 		highlightRepo: highlightRepo,
+		noteRepo:      noteRepo,
+		progressRepo:  progressRepo,
 		extractor:     extractor,
 		storage:       storage,
 	}
@@ -49,6 +55,7 @@ func NewServer(
 	mux.HandleFunc("GET /books/{id}/pages/{number}", s.handleGetPage)
 	mux.HandleFunc("POST /books/{id}/highlights", s.handleCreateHighlight)
 	mux.HandleFunc("GET /books/{id}/highlights", s.handleListHighlights)
+	mux.HandleFunc("POST /books/{id}/notes", s.handleCreateNote)
 	mux.HandleFunc("GET /health", handleHealth)
 	s.mux = mux
 
@@ -187,6 +194,52 @@ func (s *Server) handleListHighlights(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, highlights)
+}
+
+type createNoteRequest struct {
+	HighlightID *string `json:"highlightId"`
+	Content     string  `json:"content"`
+}
+
+func (s *Server) handleCreateNote(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	bookID := r.PathValue("id")
+
+	if _, err := s.bookRepo.FindByID(ctx, bookID); err != nil {
+		http.Error(w, "book not found", http.StatusNotFound)
+		return
+	}
+
+	var req createNoteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.HighlightID != nil {
+		highlight, err := s.highlightRepo.FindByID(ctx, *req.HighlightID)
+		if err != nil {
+			http.Error(w, "highlight not found", http.StatusBadRequest)
+			return
+		}
+		if highlight.BookID != bookID {
+			http.Error(w, "highlight does not belong to this book", http.StatusBadRequest)
+			return
+		}
+	}
+
+	note, err := domain.NewNote(newID(), bookID, req.HighlightID, req.Content)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.noteRepo.Create(ctx, note); err != nil {
+		http.Error(w, "creating note", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, note)
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {

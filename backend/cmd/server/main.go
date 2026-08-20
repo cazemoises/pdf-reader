@@ -52,6 +52,8 @@ func main() {
 		postgres.NewBookRepository(db),
 		postgres.NewPageRepository(db),
 		postgres.NewHighlightRepository(db),
+		postgres.NewNoteRepository(db),
+		postgres.NewReadingProgressRepository(db),
 		httpextractor.NewHTTPTextExtractor(extractorURL, nil),
 		filestorage.NewFileSystemStorage(storageDir),
 	)
