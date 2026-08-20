@@ -313,6 +313,111 @@ func TestGetBook_ReturnsBook(t *testing.T) {
 	}
 }
 
+func TestGetBooks_ListsAllBooks(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	mustCreateTestBookDirect(t, deps, "book-list-a")
+	mustCreateTestBookDirect(t, deps, "book-list-b")
+
+	resp, err := http.Get(httpSrv.URL + "/books")
+	if err != nil {
+		t.Fatalf("GET /books: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var got []bookJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(got) = %d, want 2", len(got))
+	}
+}
+
+func TestGetBooks_EmptyWhenNoneCreated(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, _ := newTestServer(t, db, extractorSrv.URL)
+
+	resp, err := http.Get(httpSrv.URL + "/books")
+	if err != nil {
+		t.Fatalf("GET /books: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var got []bookJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("len(got) = %d, want 0", len(got))
+	}
+}
+
+func TestGetBookFile_ReturnsFileBytes(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+
+	body, contentType := multipartBody(t, "title", "File Book", "file", "book.pdf", "fake pdf bytes")
+	resp, err := http.Post(httpSrv.URL+"/books", contentType, body)
+	if err != nil {
+		t.Fatalf("POST /books: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+	var created bookJSON
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	_ = deps
+
+	fileResp, err := http.Get(httpSrv.URL + "/books/" + created.ID + "/file")
+	if err != nil {
+		t.Fatalf("GET /books/{id}/file: unexpected error: %v", err)
+	}
+	defer fileResp.Body.Close()
+
+	if fileResp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", fileResp.StatusCode, http.StatusOK)
+	}
+	if ct := fileResp.Header.Get("Content-Type"); ct != "application/pdf" {
+		t.Errorf("Content-Type = %q, want %q", ct, "application/pdf")
+	}
+
+	gotBytes, err := io.ReadAll(fileResp.Body)
+	if err != nil {
+		t.Fatalf("reading file response body: %v", err)
+	}
+	if string(gotBytes) != "fake pdf bytes" {
+		t.Errorf("body = %q, want %q", string(gotBytes), "fake pdf bytes")
+	}
+}
+
+func TestGetBookFile_NotFoundReturns404(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, _ := newTestServer(t, db, extractorSrv.URL)
+
+	resp, err := http.Get(httpSrv.URL + "/books/does-not-exist/file")
+	if err != nil {
+		t.Fatalf("GET /books/{id}/file: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
 func TestGetBook_NotFoundReturns404(t *testing.T) {
 	db := openTestDBForServer(t)
 	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
