@@ -444,3 +444,51 @@ func TestPostHighlights_CreatesHighlight(t *testing.T) {
 		t.Errorf("stored highlight BookID = %q, want %q", stored.BookID, book.ID)
 	}
 }
+
+func mustCreateTestHighlightDirect(t *testing.T, deps testDeps, id, bookID string, pageNumber int) *domain.Highlight {
+	t.Helper()
+
+	box := domain.BoundingBox{X: 1, Y: 2, Width: 3, Height: 4}
+	highlight, err := domain.NewHighlight(id, bookID, pageNumber, box, "green")
+	if err != nil {
+		t.Fatalf("building test highlight: %v", err)
+	}
+	if err := deps.highlightRepo.Create(context.Background(), highlight); err != nil {
+		t.Fatalf("creating test highlight: %v", err)
+	}
+	return highlight
+}
+
+func TestGetHighlights_ListsHighlightsForBook(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	bookA := mustCreateTestBookDirect(t, deps, "book-highlight-list-a")
+	bookB := mustCreateTestBookDirect(t, deps, "book-highlight-list-b")
+	mustCreateTestHighlightDirect(t, deps, "highlight-list-a1", bookA.ID, 1)
+	mustCreateTestHighlightDirect(t, deps, "highlight-list-a2", bookA.ID, 2)
+	mustCreateTestHighlightDirect(t, deps, "highlight-list-b1", bookB.ID, 1)
+
+	resp, err := http.Get(fmt.Sprintf("%s/books/%s/highlights", httpSrv.URL, bookA.ID))
+	if err != nil {
+		t.Fatalf("GET /books/{id}/highlights: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var got []highlightJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(got) = %d, want 2", len(got))
+	}
+	for _, h := range got {
+		if h.BookID != bookA.ID {
+			t.Errorf("highlight %s has BookID = %q, want %q", h.ID, h.BookID, bookA.ID)
+		}
+	}
+}
