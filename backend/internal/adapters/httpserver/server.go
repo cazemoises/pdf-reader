@@ -57,6 +57,7 @@ func NewServer(
 	mux.HandleFunc("GET /books/{id}/highlights", s.handleListHighlights)
 	mux.HandleFunc("POST /books/{id}/notes", s.handleCreateNote)
 	mux.HandleFunc("GET /books/{id}/notes", s.handleListNotes)
+	mux.HandleFunc("GET /books/{id}/progress", s.handleGetProgress)
 	mux.HandleFunc("GET /health", handleHealth)
 	s.mux = mux
 
@@ -259,6 +260,24 @@ func (s *Server) handleListNotes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, notes)
+}
+
+func (s *Server) handleGetProgress(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	bookID := r.PathValue("id")
+
+	if _, err := s.bookRepo.FindByID(ctx, bookID); err != nil {
+		http.Error(w, "book not found", http.StatusNotFound)
+		return
+	}
+
+	progress, err := s.progressRepo.GetByBookID(ctx, bookID)
+	if err != nil {
+		http.Error(w, "reading progress not found", http.StatusNotFound)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, progress)
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
