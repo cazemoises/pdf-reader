@@ -48,6 +48,7 @@ func NewServer(
 	mux.HandleFunc("GET /books/{id}", s.handleGetBook)
 	mux.HandleFunc("GET /books/{id}/pages/{number}", s.handleGetPage)
 	mux.HandleFunc("POST /books/{id}/highlights", s.handleCreateHighlight)
+	mux.HandleFunc("GET /books/{id}/highlights", s.handleListHighlights)
 	s.mux = mux
 
 	return s
@@ -175,6 +176,16 @@ func (s *Server) handleCreateHighlight(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, highlight)
+}
+
+func (s *Server) handleListHighlights(w http.ResponseWriter, r *http.Request) {
+	highlights, err := s.highlightRepo.ListByBookID(r.Context(), r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "listing highlights", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, highlights)
 }
 
 // extractPages opens the book's stored file and runs the extractor against
