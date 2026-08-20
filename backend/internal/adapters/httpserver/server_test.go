@@ -723,6 +723,85 @@ func TestGetNotes_BookNotFound_Returns404(t *testing.T) {
 	}
 }
 
+// progressJSON mirrors domain.ReadingProgress's camelCase json tags.
+type progressJSON struct {
+	BookID     string  `json:"bookId"`
+	LastPage   int     `json:"lastPage"`
+	Percentage float64 `json:"percentage"`
+}
+
+func mustCreateTestProgressDirect(t *testing.T, deps testDeps, bookID string, lastPage int, percentage float64) *domain.ReadingProgress {
+	t.Helper()
+
+	progress, err := domain.NewReadingProgress(bookID, lastPage, percentage)
+	if err != nil {
+		t.Fatalf("building test reading progress: %v", err)
+	}
+	if err := deps.progressRepo.Save(context.Background(), progress); err != nil {
+		t.Fatalf("saving test reading progress: %v", err)
+	}
+	return progress
+}
+
+func TestGetProgress_ReturnsProgress(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	book := mustCreateTestBookDirect(t, deps, "book-progress-get-found")
+	mustCreateTestProgressDirect(t, deps, book.ID, 5, 42.5)
+
+	resp, err := http.Get(fmt.Sprintf("%s/books/%s/progress", httpSrv.URL, book.ID))
+	if err != nil {
+		t.Fatalf("GET /books/{id}/progress: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var got progressJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if got.BookID != book.ID || got.LastPage != 5 || got.Percentage != 42.5 {
+		t.Errorf("got = %+v, want BookID=%q, LastPage=5, Percentage=42.5", got, book.ID)
+	}
+}
+
+func TestGetProgress_NoProgressSaved_Returns404(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	book := mustCreateTestBookDirect(t, deps, "book-progress-get-missing")
+
+	resp, err := http.Get(fmt.Sprintf("%s/books/%s/progress", httpSrv.URL, book.ID))
+	if err != nil {
+		t.Fatalf("GET /books/{id}/progress: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
+func TestGetProgress_BookNotFound_Returns404(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, _ := newTestServer(t, db, extractorSrv.URL)
+
+	resp, err := http.Get(httpSrv.URL + "/books/does-not-exist/progress")
+	if err != nil {
+		t.Fatalf("GET /books/{id}/progress: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
 // TestHealth_ReturnsOK does not need Postgres or the fake extractor: the
 // health check touches none of the Server's ports.
 func TestHealth_ReturnsOK(t *testing.T) {
