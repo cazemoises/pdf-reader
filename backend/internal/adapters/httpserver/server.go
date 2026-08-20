@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"pdf-reader/backend/internal/domain"
 	"pdf-reader/backend/internal/ports"
@@ -45,6 +46,7 @@ func NewServer(
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /books", s.handleCreateBook)
 	mux.HandleFunc("GET /books/{id}", s.handleGetBook)
+	mux.HandleFunc("GET /books/{id}/pages/{number}", s.handleGetPage)
 	s.mux = mux
 
 	return s
@@ -122,6 +124,29 @@ func (s *Server) handleGetBook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, book)
+}
+
+func (s *Server) handleGetPage(w http.ResponseWriter, r *http.Request) {
+	number, err := strconv.Atoi(r.PathValue("number"))
+	if err != nil {
+		http.Error(w, "invalid page number", http.StatusBadRequest)
+		return
+	}
+
+	pages, err := s.pageRepo.ListByBookID(r.Context(), r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "book not found", http.StatusNotFound)
+		return
+	}
+
+	for _, page := range pages {
+		if page.Number == number {
+			writeJSON(w, http.StatusOK, page)
+			return
+		}
+	}
+
+	http.Error(w, "page not found", http.StatusNotFound)
 }
 
 // extractPages opens the book's stored file and runs the extractor against
