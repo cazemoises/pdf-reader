@@ -635,6 +635,94 @@ func TestPostNotes_HighlightNotFound_Returns400(t *testing.T) {
 	}
 }
 
+func mustCreateTestNoteDirect(t *testing.T, deps testDeps, id, bookID string, highlightID *string) *domain.Note {
+	t.Helper()
+
+	note, err := domain.NewNote(id, bookID, highlightID, "note content "+id)
+	if err != nil {
+		t.Fatalf("building test note: %v", err)
+	}
+	if err := deps.noteRepo.Create(context.Background(), note); err != nil {
+		t.Fatalf("creating test note: %v", err)
+	}
+	return note
+}
+
+func TestGetNotes_ListsNotesForBook(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	bookA := mustCreateTestBookDirect(t, deps, "book-note-list-a")
+	bookB := mustCreateTestBookDirect(t, deps, "book-note-list-b")
+	mustCreateTestNoteDirect(t, deps, "note-list-a1", bookA.ID, nil)
+	mustCreateTestNoteDirect(t, deps, "note-list-a2", bookA.ID, nil)
+	mustCreateTestNoteDirect(t, deps, "note-list-b1", bookB.ID, nil)
+
+	resp, err := http.Get(fmt.Sprintf("%s/books/%s/notes", httpSrv.URL, bookA.ID))
+	if err != nil {
+		t.Fatalf("GET /books/{id}/notes: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var got []noteJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("len(got) = %d, want 2", len(got))
+	}
+	for _, n := range got {
+		if n.BookID != bookA.ID {
+			t.Errorf("note %s has BookID = %q, want %q", n.ID, n.BookID, bookA.ID)
+		}
+	}
+}
+
+func TestGetNotes_EmptyWhenNoneCreated(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
+	book := mustCreateTestBookDirect(t, deps, "book-note-list-empty")
+
+	resp, err := http.Get(fmt.Sprintf("%s/books/%s/notes", httpSrv.URL, book.ID))
+	if err != nil {
+		t.Fatalf("GET /books/{id}/notes: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var got []noteJSON
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("len(got) = %d, want 0", len(got))
+	}
+}
+
+func TestGetNotes_BookNotFound_Returns404(t *testing.T) {
+	db := openTestDBForServer(t)
+	extractorSrv := fakeExtractorServer(t, http.StatusOK, `{"pages": []}`)
+	httpSrv, _ := newTestServer(t, db, extractorSrv.URL)
+
+	resp, err := http.Get(httpSrv.URL + "/books/does-not-exist/notes")
+	if err != nil {
+		t.Fatalf("GET /books/{id}/notes: unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	}
+}
+
 // TestHealth_ReturnsOK does not need Postgres or the fake extractor: the
 // health check touches none of the Server's ports.
 func TestHealth_ReturnsOK(t *testing.T) {
