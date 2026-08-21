@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { uploadBook } from "../api/client";
 import type { Book } from "../api/types";
+import ThemeToggle from "../components/ThemeToggle";
 
 function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -33,70 +34,97 @@ function UploadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 px-6 py-10 text-slate-100">
-      <div className="mx-auto max-w-lg">
-        <div className="mb-8 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Upload a PDF</h1>
-          <Link to="/" className="text-sm text-slate-400 hover:text-slate-100">
-            Back to books
-          </Link>
-        </div>
+    <div className="min-h-screen bg-background font-sans text-ink">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-elevated px-4 py-3.5 sm:px-8">
+        <Link to="/" className="text-sm font-medium text-ink-muted hover:text-ink">
+          ‹ Biblioteca
+        </Link>
+        <ThemeToggle />
+      </header>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+      <main className="mx-auto max-w-lg px-4 pb-16 pt-6 sm:px-8">
+        <h1 className="mb-4 font-serif text-2xl font-semibold">Adicionar PDF</h1>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col items-center gap-3.5 rounded-xl border border-border bg-elevated px-5 py-7">
+            <div className="h-[38px] w-[30px] rounded-sm border-2 border-ink-faint" />
+            <p className="text-sm text-ink-muted">
+              {file ? file.name : "Nenhum arquivo selecionado"}
+            </p>
+            <label className="flex h-12 w-full cursor-pointer items-center justify-center rounded-[10px] bg-accent px-4 text-sm font-semibold text-accent-text">
+              Escolher arquivo do dispositivo
+              <input
+                id="file"
+                type="file"
+                accept="application/pdf"
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                className="sr-only"
+              />
+            </label>
+          </div>
+
           <div>
-            <label htmlFor="title" className="mb-1 block text-sm text-slate-400">
-              Title (optional)
+            <label htmlFor="title" className="mb-1 block text-sm text-ink-muted">
+              Título (opcional)
             </label>
             <input
               id="title"
               type="text"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              className="w-full rounded-md border border-slate-800 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-slate-500"
-              placeholder="Defaults to the file name"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="file" className="mb-1 block text-sm text-slate-400">
-              PDF file
-            </label>
-            <input
-              id="file"
-              type="file"
-              accept="application/pdf"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              className="w-full text-sm text-slate-300"
+              className="w-full rounded-md border border-border bg-elevated px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+              placeholder="Usa o nome do arquivo por padrão"
             />
           </div>
 
           <button
             type="submit"
             disabled={submitting}
-            className="rounded-md bg-slate-100 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-12 rounded-[10px] bg-accent text-sm font-semibold text-accent-text disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {submitting ? "Uploading…" : "Upload"}
+            {submitting ? "Enviando…" : "Enviar"}
           </button>
         </form>
 
-        {error && <p className="mt-4 text-red-400">{error}</p>}
+        {submitting && (
+          <div className="mt-4 flex items-center gap-3 rounded-[10px] border border-border bg-elevated p-4">
+            <div className="h-[18px] w-[18px] shrink-0 animate-spin rounded-full border-2 border-border border-t-accent" />
+            <div>
+              <p className="font-mono text-xs">{file?.name}</p>
+              <p className="mt-0.5 text-[11.5px] text-ink-muted">
+                Extraindo texto e gerando capa…
+              </p>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-4 flex flex-col gap-2.5 rounded-[10px] border border-border bg-danger-soft p-4">
+            {file && <p className="font-mono text-xs">{file.name}</p>}
+            <p className="text-xs font-semibold leading-relaxed text-danger">{error}</p>
+          </div>
+        )}
 
         {uploadedBook && (
-          <div className="mt-6 rounded-md border border-slate-800 p-4">
-            <p className="text-sm text-slate-400">Uploaded</p>
-            <p className="font-medium">{uploadedBook.title}</p>
-            <p className="mt-1 text-sm">
-              Status: <span className="font-medium">{uploadedBook.status}</span>
-            </p>
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-[10px] border border-border bg-elevated p-4">
+            <div className="flex items-center gap-2.5">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />
+              <div>
+                <p className="font-mono text-xs">{uploadedBook.title}</p>
+                <p className="mt-0.5 text-[11.5px] font-semibold text-ink">
+                  {uploadedBook.status === "ready" ? "Pronto" : uploadedBook.status}
+                </p>
+              </div>
+            </div>
             <Link
               to={`/read/${uploadedBook.id}`}
-              className="mt-3 inline-block text-sm text-slate-100 underline"
+              className="shrink-0 text-xs font-semibold text-accent"
             >
-              Open book
+              Ver →
             </Link>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }
