@@ -1,4 +1,4 @@
-import type { Book, ReadingProgress } from "./types";
+import type { Book, BoundingBox, Highlight, Note, ReadingProgress } from "./types";
 
 async function parseJSONOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -59,4 +59,43 @@ export async function saveProgress(
     body: JSON.stringify({ lastPage, percentage }),
   });
   return parseJSONOrThrow<ReadingProgress>(res);
+}
+
+export async function createHighlight(
+  bookId: string,
+  pageNumber: number,
+  box: BoundingBox,
+  color: string,
+): Promise<Highlight> {
+  const res = await fetch(`/books/${bookId}/highlights`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pageNumber, box, color }),
+  });
+  return parseJSONOrThrow<Highlight>(res);
+}
+
+export async function listHighlights(bookId: string): Promise<Highlight[]> {
+  const res = await fetch(`/books/${bookId}/highlights`);
+  const highlights = await parseJSONOrThrow<Highlight[] | null>(res);
+  return highlights ?? [];
+}
+
+export async function createNote(
+  bookId: string,
+  highlightId: string | null,
+  content: string,
+): Promise<Note> {
+  const res = await fetch(`/books/${bookId}/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ highlightId, content }),
+  });
+  return parseJSONOrThrow<Note>(res);
+}
+
+export async function listNotes(bookId: string): Promise<Note[]> {
+  const res = await fetch(`/books/${bookId}/notes`);
+  const notes = await parseJSONOrThrow<Note[] | null>(res);
+  return notes ?? [];
 }

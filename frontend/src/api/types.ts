@@ -15,3 +15,27 @@ export interface ReadingProgress {
   percentage: number;
   updatedAt: string;
 }
+
+export interface BoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface Highlight {
+  id: string;
+  bookId: string;
+  pageNumber: number;
+  box: BoundingBox;
+  color: string;
+  createdAt: string;
+}
+
+export interface Note {
+  id: string;
+  bookId: string;
+  highlightId: string | null;
+  content: string;
+  createdAt: string;
+}
