@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"pdf-reader/backend/internal/adapters/httpextractor"
 	"pdf-reader/backend/internal/adapters/httpserver"
 	"pdf-reader/backend/internal/adapters/postgres"
+	"pdf-reader/backend/migrations"
 )
 
 func main() {
@@ -31,6 +33,10 @@ func main() {
 
 	if err := db.Ping(); err != nil {
 		log.Fatalf("pinging database: %v", err)
+	}
+
+	if err := postgres.ApplyMigrations(context.Background(), db, migrations.FS); err != nil {
+		log.Fatalf("applying migrations: %v", err)
 	}
 
 	extractorURL := os.Getenv("EXTRACTOR_URL")
