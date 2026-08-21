@@ -90,7 +90,7 @@ func (r *BookRepository) List(ctx context.Context) ([]*domain.Book, error) {
 	}
 	defer rows.Close()
 
-	var books []*domain.Book
+	books := make([]*domain.Book, 0)
 	for rows.Next() {
 		book, err := scanBook(rows)
 		if err != nil {

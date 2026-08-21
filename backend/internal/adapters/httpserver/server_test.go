@@ -384,8 +384,16 @@ func TestGetBooks_EmptyWhenNoneCreated(t *testing.T) {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
+	rawBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading response body: %v", err)
+	}
+	if got := strings.TrimSpace(string(rawBody)); got != "[]" {
+		t.Errorf("response body = %q, want %q (nil slices marshal to JSON null, breaking clients that expect an array)", got, "[]")
+	}
+
 	var got []bookJSON
-	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+	if err := json.Unmarshal(rawBody, &got); err != nil {
 		t.Fatalf("decoding response: %v", err)
 	}
 	if len(got) != 0 {
