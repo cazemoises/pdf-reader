@@ -1,8 +1,11 @@
+import { Route, Routes } from "react-router-dom";
+import BookListPage from "./pages/BookListPage";
+
 function App() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-100">
-      <p className="text-lg">pdf-reader — scaffold only, built by the orchestrator</p>
-    </div>
+    <Routes>
+      <Route path="/" element={<BookListPage />} />
+    </Routes>
   );
 }
 
