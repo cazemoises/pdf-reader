@@ -3,13 +3,31 @@ import { Link, useParams } from "react-router-dom";
 import { GlobalWorkerOptions, TextLayer, getDocument } from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.mjs?url";
-import { bookFileUrl, getBook, getProgress, saveProgress } from "../api/client";
-import type { Book } from "../api/types";
+import {
+  bookFileUrl,
+  createHighlight,
+  createNote,
+  getBook,
+  getProgress,
+  listHighlights,
+  listNotes,
+  saveProgress,
+} from "../api/client";
+import type { Book, BoundingBox, Highlight, Note } from "../api/types";
 import "./ReaderPage.css";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
 
 const PAGE_SCALE = 1.4;
+
+const HIGHLIGHT_COLORS = ["#ffeb3b", "#4ade80", "#60a5fa", "#f472b6"];
+
+interface PendingSelection {
+  pageNumber: number;
+  box: BoundingBox;
+  anchorX: number;
+  anchorY: number;
+}
 
 function ReaderPage() {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +40,12 @@ function ReaderPage() {
   const [error, setError] = useState<string | null>(null);
   const [progressReady, setProgressReady] = useState(false);
   const skipNextSaveRef = useRef(false);
+
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
+  const [selectedColor, setSelectedColor] = useState(HIGHLIGHT_COLORS[0]);
+  const [noteDraft, setNoteDraft] = useState("");
 
   useEffect(() => {
     if (!id) {
@@ -160,6 +184,42 @@ function ReaderPage() {
   }, [pdf, pageNumber]);
 
   useEffect(() => {
+    if (!id) {
+      return;
+    }
+
+    let cancelled = false;
+
+    listHighlights(id)
+      .then((result) => {
+        if (!cancelled) {
+          setHighlights(result);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "failed to load highlights");
+        }
+      });
+
+    listNotes(id)
+      .then((result) => {
+        if (!cancelled) {
+          setNotes(result);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "failed to load notes");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  useEffect(() => {
     if (!pdf || !id || !progressReady) {
       return;
     }
@@ -174,6 +234,80 @@ function ReaderPage() {
       setError(err instanceof Error ? err.message : "failed to save reading progress");
     });
   }, [pdf, id, pageNumber, progressReady]);
+
+  function handleTextLayerMouseUp() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+      return;
+    }
+    if (!selection.toString().trim()) {
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const selectionRect = selection.getRangeAt(0).getBoundingClientRect();
+    if (canvasRect.width === 0 || canvasRect.height === 0) {
+      return;
+    }
+
+    const box: BoundingBox = {
+      x: Math.max(0, (selectionRect.left - canvasRect.left) / canvasRect.width),
+      y: Math.max(0, (selectionRect.top - canvasRect.top) / canvasRect.height),
+      width: selectionRect.width / canvasRect.width,
+      height: selectionRect.height / canvasRect.height,
+    };
+
+    if (box.width <= 0 || box.height <= 0) {
+      return;
+    }
+
+    setPendingSelection({
+      pageNumber,
+      box,
+      anchorX: selectionRect.right - canvasRect.left,
+      anchorY: selectionRect.bottom - canvasRect.top,
+    });
+    setSelectedColor(HIGHLIGHT_COLORS[0]);
+    setNoteDraft("");
+  }
+
+  function handleCancelHighlight() {
+    setPendingSelection(null);
+    setNoteDraft("");
+  }
+
+  async function handleConfirmHighlight() {
+    if (!id || !pendingSelection) {
+      return;
+    }
+
+    try {
+      const highlight = await createHighlight(
+        id,
+        pendingSelection.pageNumber,
+        pendingSelection.box,
+        selectedColor,
+      );
+      setHighlights((prev) => [...prev, highlight]);
+
+      const content = noteDraft.trim();
+      if (content) {
+        const note = await createNote(id, highlight.id, content);
+        setNotes((prev) => [...prev, note]);
+      }
+
+      window.getSelection()?.removeAllRanges();
+      setPendingSelection(null);
+      setNoteDraft("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "failed to create highlight");
+    }
+  }
 
   if (!id) {
     return <p className="p-6 text-red-400">Missing book id.</p>;
@@ -221,7 +355,44 @@ function ReaderPage() {
       <div className="flex justify-center overflow-auto p-6">
         <div className="pageContainer">
           <canvas ref={canvasRef} />
-          <div ref={textLayerRef} className="textLayer" />
+          <div ref={textLayerRef} className="textLayer" onMouseUp={handleTextLayerMouseUp} />
+
+          {pendingSelection && (
+            <div
+              className="highlightPopup"
+              style={{ left: pendingSelection.anchorX, top: pendingSelection.anchorY }}
+            >
+              <div className="highlightPopupColors">
+                {HIGHLIGHT_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={
+                      "colorSwatch" + (color === selectedColor ? " colorSwatch--selected" : "")
+                    }
+                    style={{ backgroundColor: color }}
+                    onClick={() => setSelectedColor(color)}
+                    aria-label={`Use color ${color}`}
+                  />
+                ))}
+              </div>
+              <textarea
+                className="highlightPopupNote"
+                placeholder="Add a note (optional)"
+                value={noteDraft}
+                onChange={(event) => setNoteDraft(event.target.value)}
+                rows={2}
+              />
+              <div className="highlightPopupActions">
+                <button type="button" onClick={handleCancelHighlight}>
+                  Cancel
+                </button>
+                <button type="button" onClick={() => void handleConfirmHighlight()}>
+                  Save highlight
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
