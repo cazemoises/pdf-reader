@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { GlobalWorkerOptions, TextLayer, getDocument } from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.mjs?url";
-import { bookFileUrl, getBook } from "../api/client";
+import { bookFileUrl, getBook, getProgress } from "../api/client";
 import type { Book } from "../api/types";
 import "./ReaderPage.css";
 
@@ -20,6 +20,8 @@ function ReaderPage() {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  const [progressReady, setProgressReady] = useState(false);
+  const skipNextSaveRef = useRef(false);
 
   useEffect(() => {
     if (!id) {
@@ -60,6 +62,40 @@ function ReaderPage() {
       void loadingTask.destroy();
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!pdf || !id) {
+      return;
+    }
+
+    let cancelled = false;
+    setProgressReady(false);
+
+    getProgress(id)
+      .then((progress) => {
+        if (cancelled || !progress) {
+          return;
+        }
+        if (progress.lastPage >= 1 && progress.lastPage <= pdf.numPages) {
+          skipNextSaveRef.current = true;
+          setPageNumber(progress.lastPage);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "failed to load reading progress");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setProgressReady(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pdf, id]);
 
   useEffect(() => {
     if (!pdf) {
