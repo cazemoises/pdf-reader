@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { GlobalWorkerOptions, TextLayer, getDocument } from "pdfjs-dist";
-import type { PDFDocumentProxy } from "pdfjs-dist";
+import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.mjs?url";
 import {
   bookFileUrl,
@@ -135,6 +135,7 @@ function ReaderPage() {
     }
 
     let cancelled = false;
+    let renderTask: RenderTask | null = null;
 
     pdf
       .getPage(pageNumber)
@@ -163,7 +164,7 @@ function ReaderPage() {
         const transform =
           outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
 
-        const renderTask = page.render({ canvas, transform, viewport });
+        renderTask = page.render({ canvas, transform, viewport });
         await renderTask.promise;
         if (cancelled) {
           return;
@@ -187,6 +188,7 @@ function ReaderPage() {
 
     return () => {
       cancelled = true;
+      renderTask?.cancel();
     };
   }, [pdf, pageNumber]);
 
