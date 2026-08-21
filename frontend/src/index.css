@@ -1,3 +1,63 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --color-bg: oklch(97.5% 0.006 70);
+  --color-bg-elevated: oklch(99.3% 0.003 70);
+  --color-surface: oklch(95.5% 0.007 70);
+  --color-surface-muted: oklch(93% 0.007 70);
+  --color-border: oklch(88% 0.007 70);
+  --color-text: oklch(21% 0.01 50);
+  --color-text-muted: oklch(46% 0.012 50);
+  --color-text-faint: oklch(64% 0.01 50);
+  --color-accent: oklch(55% 0.12 38);
+  --color-accent-text: oklch(99% 0 0);
+  --color-accent-soft: oklch(93% 0.035 38);
+  --color-reading-bg: oklch(98.8% 0.005 75);
+  --color-error: oklch(50% 0.18 25);
+  --color-error-soft: oklch(95% 0.025 25);
+  --color-hl1-dot: oklch(78% 0.14 95);
+  --color-hl1-bg: oklch(78% 0.14 95 / 0.45);
+  --color-hl2-dot: oklch(72% 0.13 150);
+  --color-hl2-bg: oklch(72% 0.13 150 / 0.4);
+  --color-hl3-dot: oklch(75% 0.13 10);
+  --color-hl3-bg: oklch(75% 0.13 10 / 0.4);
+  --color-hl4-dot: oklch(72% 0.09 235);
+  --color-hl4-bg: oklch(72% 0.09 235 / 0.4);
+}
+
+html.dark {
+  --color-bg: oklch(23% 0.013 50);
+  --color-bg-elevated: oklch(27% 0.013 50);
+  --color-surface: oklch(29% 0.014 50);
+  --color-surface-muted: oklch(32% 0.014 50);
+  --color-border: oklch(36% 0.015 50);
+  --color-text: oklch(91% 0.012 60);
+  --color-text-muted: oklch(68% 0.013 55);
+  --color-text-faint: oklch(52% 0.013 55);
+  --color-accent: oklch(74% 0.11 40);
+  --color-accent-text: oklch(16% 0.01 50);
+  --color-accent-soft: oklch(35% 0.045 40);
+  --color-reading-bg: oklch(25.5% 0.014 50);
+  --color-error: oklch(72% 0.15 25);
+  --color-error-soft: oklch(32% 0.06 25);
+  --color-hl1-dot: oklch(70% 0.11 95);
+  --color-hl1-bg: oklch(55% 0.09 95 / 0.32);
+  --color-hl2-dot: oklch(65% 0.1 150);
+  --color-hl2-bg: oklch(48% 0.09 150 / 0.3);
+  --color-hl3-dot: oklch(68% 0.1 10);
+  --color-hl3-bg: oklch(48% 0.1 10 / 0.3);
+  --color-hl4-dot: oklch(65% 0.08 235);
+  --color-hl4-bg: oklch(46% 0.08 235 / 0.3);
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+body {
+  font-family: "Work Sans", system-ui, sans-serif;
+}
