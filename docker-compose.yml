@@ -1,24 +1,35 @@
+# Brings up the full pdf-reader stack: postgres, backend (Go), extractor
+# (Python/FastAPI), frontend (nginx-served React build). All env vars
+# have sane defaults inlined below; override any of them via a .env file
+# (see .env.example) if needed. No manual steps required after `docker
+# compose up` - the backend applies its own database migrations on
+# startup (see backend/internal/adapters/postgres/migrate.go).
 services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: pdfreader
-      POSTGRES_PASSWORD: pdfreader
-      POSTGRES_DB: pdfreader
+      POSTGRES_USER: ${POSTGRES_USER:-pdfreader}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pdfreader}
+      POSTGRES_DB: ${POSTGRES_DB:-pdfreader}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pdfreader -d pdfreader"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pdfreader} -d ${POSTGRES_DB:-pdfreader}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
       - pdf-reader-net
+    # Intentionally no published host port - postgres is only reachable
+    # from other services on the compose network. Matches the setup
+    # documented in backend/internal/adapters/postgres/book_repository_test.go.
 
   extractor:
     build: ./extractor
     environment:
       PORT: "8000"
+    ports:
+      - "${EXTRACTOR_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
       interval: 10s
@@ -28,34 +39,36 @@ services:
       - pdf-reader-net
 
   backend:
-    # NOTE: builds/starts only once backend/cmd/server exists and exposes
-    # GET /health on :8080 - both intentionally not implemented yet (see
-    # backend/Dockerfile). Left wired up here so it works unmodified once
-    # the orchestrator adds them.
     build: ./backend
     environment:
-      DATABASE_URL: postgres://pdfreader:pdfreader@postgres:5432/pdfreader?sslmode=disable
+      DATABASE_URL: postgres://${POSTGRES_USER:-pdfreader}:${POSTGRES_PASSWORD:-pdfreader}@postgres:5432/${POSTGRES_DB:-pdfreader}?sslmode=disable
       EXTRACTOR_URL: http://extractor:8000
+      PORT: "8080"
+      STORAGE_DIR: /data
+    volumes:
+      - backend-storage:/data
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
       extractor:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    # No Docker healthcheck here: the runtime image is
+    # gcr.io/distroless/static-debian12, which has no shell or wget/curl
+    # by design (minimal attack surface), so a CMD-based healthcheck
+    # can't run inside the container. GET /health is still reachable
+    # from the host/other containers via the published port.
     networks:
       - pdf-reader-net
 
   frontend:
     build: ./frontend
     ports:
-      - "8081:80"
+      - "${FRONTEND_PORT:-8081}:80"
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost/"]
       interval: 10s
@@ -70,3 +83,4 @@ networks:
 
 volumes:
   postgres-data:
+  backend-storage:

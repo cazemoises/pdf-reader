@@ -1,8 +1,3 @@
-# NOTE: this only builds once cmd/server/main.go exists. Today the backend
-# module intentionally has no entrypoint (see internal/domain/doc.go and
-# internal/ports/doc.go) - the orchestrator's Dev agent adds cmd/server as
-# one of its first backlog tasks. Until then, `docker build` on this
-# directory will fail with "no Go files in ./cmd/server", which is expected.
 FROM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod ./
