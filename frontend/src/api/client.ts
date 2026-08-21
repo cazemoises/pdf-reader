@@ -10,7 +10,8 @@ async function parseJSONOrThrow<T>(res: Response): Promise<T> {
 
 export async function listBooks(): Promise<Book[]> {
   const res = await fetch("/books");
-  return parseJSONOrThrow<Book[]>(res);
+  const books = await parseJSONOrThrow<Book[] | null>(res);
+  return books ?? [];
 }
 
 export async function getBook(id: string): Promise<Book> {
