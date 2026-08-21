@@ -89,7 +89,7 @@ function UploadPage() {
               Status: <span className="font-medium">{uploadedBook.status}</span>
             </p>
             <Link
-              to={`/books/${uploadedBook.id}`}
+              to={`/read/${uploadedBook.id}`}
               className="mt-3 inline-block text-sm text-slate-100 underline"
             >
               Open book

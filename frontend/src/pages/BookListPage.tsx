@@ -66,7 +66,7 @@ function BookListPage() {
             {books.map((book) => (
               <li key={book.id}>
                 <Link
-                  to={`/books/${book.id}`}
+                  to={`/read/${book.id}`}
                   className="flex items-center justify-between px-4 py-3 hover:bg-slate-900"
                 >
                   <span className="font-medium">{book.title}</span>
