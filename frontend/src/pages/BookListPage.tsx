@@ -1,18 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { listBooks } from "../api/client";
+import { getProgress, listBooks } from "../api/client";
 import type { Book } from "../api/types";
-
-const statusStyles: Record<Book["status"], string> = {
-  processing: "bg-amber-500/20 text-amber-300",
-  ready: "bg-emerald-500/20 text-emerald-300",
-  failed: "bg-red-500/20 text-red-300",
-};
+import ThemeToggle from "../components/ThemeToggle";
 
 function BookListPage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [progressByBook, setProgressByBook] = useState<Record<string, number>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -39,48 +35,133 @@ function BookListPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    books
+      .filter((book) => book.status === "ready")
+      .forEach((book) => {
+        getProgress(book.id)
+          .then((progress) => {
+            if (!cancelled && progress) {
+              setProgressByBook((prev) => ({ ...prev, [book.id]: progress.percentage }));
+            }
+          })
+          .catch(() => {
+            // Decorative only: a missing/failed progress fetch just leaves the bar off.
+          });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [books]);
+
   return (
-    <div className="min-h-screen bg-slate-950 px-6 py-10 text-slate-100">
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-8 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Your books</h1>
-          <Link
-            to="/upload"
-            className="rounded-md bg-slate-100 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-white"
-          >
-            Upload a PDF
-          </Link>
+    <div className="min-h-screen bg-background font-sans text-ink">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-elevated px-4 py-3.5 sm:px-8">
+        <span className="font-serif text-lg font-semibold tracking-tight">leitor.</span>
+        <ThemeToggle />
+      </header>
+
+      <main className="mx-auto max-w-5xl px-4 pb-28 pt-6 sm:px-8">
+        <div className="mb-5 flex items-end justify-between">
+          <h1 className="font-serif text-2xl font-semibold sm:text-[26px]">Biblioteca</h1>
+          <span className="text-sm text-ink-muted">
+            {books.length} {books.length === 1 ? "livro" : "livros"}
+          </span>
         </div>
 
-        {loading && <p className="text-slate-400">Loading books…</p>}
-        {error && <p className="text-red-400">{error}</p>}
+        {loading && <p className="text-ink-muted">Carregando…</p>}
+        {error && <p className="text-danger">{error}</p>}
 
         {!loading && !error && books.length === 0 && (
-          <p className="text-slate-400">
-            No books yet. Upload a PDF to get started.
-          </p>
+          <div className="flex flex-col items-center gap-4 px-6 py-24 text-center">
+            <div className="h-11 w-8 rounded-sm border-2 border-ink-faint" />
+            <p className="font-serif text-lg font-semibold">Nenhum livro ainda</p>
+            <p className="max-w-[230px] text-sm text-ink-muted">
+              Envie seu primeiro PDF para começar a ler.
+            </p>
+            <Link
+              to="/upload"
+              className="mt-1 inline-flex h-12 min-w-[200px] items-center justify-center rounded-[10px] bg-accent px-6 text-sm font-semibold text-accent-text"
+            >
+              Adicionar PDF
+            </Link>
+          </div>
         )}
 
         {!loading && !error && books.length > 0 && (
-          <ul className="divide-y divide-slate-800 rounded-lg border border-slate-800">
-            {books.map((book) => (
-              <li key={book.id}>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {books.map((book) => {
+              const percentage = progressByBook[book.id];
+              return (
                 <Link
+                  key={book.id}
                   to={`/read/${book.id}`}
-                  className="flex items-center justify-between px-4 py-3 hover:bg-slate-900"
+                  className="flex flex-col gap-2"
                 >
-                  <span className="font-medium">{book.title}</span>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusStyles[book.status]}`}
+                  <div
+                    className="flex aspect-[3/4] items-center justify-center rounded-md border border-border bg-surface px-2.5"
+                    style={{
+                      backgroundImage:
+                        "repeating-linear-gradient(135deg, var(--color-border) 0 2px, transparent 2px 10px)",
+                    }}
                   >
-                    {book.status}
-                  </span>
+                    {book.status === "processing" && (
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="h-[18px] w-[18px] animate-spin rounded-full border-2 border-border border-t-accent" />
+                        <span className="text-center text-[9.5px] text-ink-faint">
+                          processando…
+                        </span>
+                      </div>
+                    )}
+                    {book.status !== "processing" && (
+                      <span className="text-center font-mono text-[10px] text-ink-faint">
+                        capa: {book.title}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="font-serif text-[13.5px] font-semibold leading-tight">
+                    {book.title}
+                  </div>
+
+                  {book.status === "failed" && (
+                    <span className="text-[11px] font-medium text-danger">Falhou</span>
+                  )}
+
+                  {book.status === "ready" && percentage !== undefined && (
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-border">
+                        <div
+                          className="h-full bg-accent"
+                          style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-ink-faint">
+                        {percentage >= 100 ? "Concluído" : `${Math.round(percentage)}%`}
+                      </span>
+                    </div>
+                  )}
+
+                  {book.status === "ready" && percentage === undefined && (
+                    <span className="text-[11px] text-ink-faint">Pronto</span>
+                  )}
                 </Link>
-              </li>
-            ))}
-          </ul>
+              );
+            })}
+          </div>
         )}
-      </div>
+      </main>
+
+      <Link
+        to="/upload"
+        aria-label="Adicionar PDF"
+        className="fixed bottom-6 right-5 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-2xl leading-none text-accent-text shadow-[0_8px_20px_rgba(0,0,0,0.25)]"
+      >
+        +
+      </Link>
     </div>
   );
 }
