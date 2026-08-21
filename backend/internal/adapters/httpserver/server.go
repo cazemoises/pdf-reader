@@ -198,9 +198,9 @@ func (s *Server) handleGetPage(w http.ResponseWriter, r *http.Request) {
 }
 
 type createHighlightRequest struct {
-	PageNumber int                `json:"pageNumber"`
-	Box        domain.BoundingBox `json:"box"`
-	Color      string             `json:"color"`
+	PageNumber int              `json:"pageNumber"`
+	Range      domain.CharRange `json:"range"`
+	Color      string           `json:"color"`
 }
 
 func (s *Server) handleCreateHighlight(w http.ResponseWriter, r *http.Request) {
@@ -210,7 +210,7 @@ func (s *Server) handleCreateHighlight(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	highlight, err := domain.NewHighlight(newID(), r.PathValue("id"), req.PageNumber, req.Box, req.Color)
+	highlight, err := domain.NewHighlight(newID(), r.PathValue("id"), req.PageNumber, req.Range, req.Color)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

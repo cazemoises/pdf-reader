@@ -102,7 +102,7 @@ func openTestDBForServer(t *testing.T) *sql.DB {
 	}
 	lockSharedTestDB(t, ctx, db)
 
-	for _, migration := range []string{"0001_create_books.sql", "0002_create_pages.sql", "0003_create_highlights.sql", "0004_create_notes.sql", "0005_create_reading_progress.sql"} {
+	for _, migration := range []string{"0001_create_books.sql", "0002_create_pages.sql", "0003_create_highlights.sql", "0004_create_notes.sql", "0005_create_reading_progress.sql", "0006_highlight_char_offsets.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", migration))
 		if err != nil {
 			t.Fatalf("reading migration file %s: %v", migration, err)
@@ -537,21 +537,19 @@ func TestGetPage_NotFoundReturns404(t *testing.T) {
 	}
 }
 
-// boxJSON mirrors domain.BoundingBox's camelCase json tags.
-type boxJSON struct {
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	Width  float64 `json:"width"`
-	Height float64 `json:"height"`
+// rangeJSON mirrors domain.CharRange's camelCase json tags.
+type rangeJSON struct {
+	Start int `json:"start"`
+	End   int `json:"end"`
 }
 
 // highlightJSON mirrors domain.Highlight's camelCase json tags.
 type highlightJSON struct {
-	ID         string  `json:"id"`
-	BookID     string  `json:"bookId"`
-	PageNumber int     `json:"pageNumber"`
-	Box        boxJSON `json:"box"`
-	Color      string  `json:"color"`
+	ID         string    `json:"id"`
+	BookID     string    `json:"bookId"`
+	PageNumber int       `json:"pageNumber"`
+	Range      rangeJSON `json:"range"`
+	Color      string    `json:"color"`
 }
 
 func TestPostHighlights_CreatesHighlight(t *testing.T) {
@@ -560,7 +558,7 @@ func TestPostHighlights_CreatesHighlight(t *testing.T) {
 	httpSrv, deps := newTestServer(t, db, extractorSrv.URL)
 	book := mustCreateTestBookDirect(t, deps, "book-highlight-post")
 
-	reqBody := `{"pageNumber": 1, "box": {"x": 10, "y": 20, "width": 100, "height": 30}, "color": "yellow"}`
+	reqBody := `{"pageNumber": 1, "range": {"start": 10, "end": 40}, "color": "yellow"}`
 
 	resp, err := http.Post(fmt.Sprintf("%s/books/%s/highlights", httpSrv.URL, book.ID), "application/json", strings.NewReader(reqBody))
 	if err != nil {
@@ -582,8 +580,8 @@ func TestPostHighlights_CreatesHighlight(t *testing.T) {
 	if got.BookID != book.ID || got.PageNumber != 1 || got.Color != "yellow" {
 		t.Errorf("got = %+v, want BookID=%q, PageNumber=1, Color=yellow", got, book.ID)
 	}
-	if got.Box != (boxJSON{X: 10, Y: 20, Width: 100, Height: 30}) {
-		t.Errorf("Box = %+v, want {10 20 100 30}", got.Box)
+	if got.Range != (rangeJSON{Start: 10, End: 40}) {
+		t.Errorf("Range = %+v, want {10 40}", got.Range)
 	}
 
 	stored, err := deps.highlightRepo.FindByID(context.Background(), got.ID)
@@ -598,8 +596,8 @@ func TestPostHighlights_CreatesHighlight(t *testing.T) {
 func mustCreateTestHighlightDirect(t *testing.T, deps testDeps, id, bookID string, pageNumber int) *domain.Highlight {
 	t.Helper()
 
-	box := domain.BoundingBox{X: 1, Y: 2, Width: 3, Height: 4}
-	highlight, err := domain.NewHighlight(id, bookID, pageNumber, box, "green")
+	charRange := domain.CharRange{Start: 1, End: 4}
+	highlight, err := domain.NewHighlight(id, bookID, pageNumber, charRange, "green")
 	if err != nil {
 		t.Fatalf("building test highlight: %v", err)
 	}

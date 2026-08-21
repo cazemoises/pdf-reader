@@ -94,7 +94,7 @@ func TestEndToEnd_UploadProcessReadHighlightNoteProgress(t *testing.T) {
 	}
 
 	// 4. POST /books/{id}/highlights -> creates a highlight on page 1.
-	highlightReqBody := `{"pageNumber": 1, "box": {"x": 10, "y": 20, "width": 100, "height": 30}, "color": "yellow"}`
+	highlightReqBody := `{"pageNumber": 1, "range": {"start": 10, "end": 40}, "color": "yellow"}`
 
 	postHighlightResp, err := http.Post(fmt.Sprintf("%s/books/%s/highlights", httpSrv.URL, bookID), "application/json", strings.NewReader(highlightReqBody))
 	if err != nil {
