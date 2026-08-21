@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -51,7 +52,9 @@ func NewServer(
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /books", s.handleCreateBook)
+	mux.HandleFunc("GET /books", s.handleListBooks)
 	mux.HandleFunc("GET /books/{id}", s.handleGetBook)
+	mux.HandleFunc("GET /books/{id}/file", s.handleGetBookFile)
 	mux.HandleFunc("GET /books/{id}/pages/{number}", s.handleGetPage)
 	mux.HandleFunc("POST /books/{id}/highlights", s.handleCreateHighlight)
 	mux.HandleFunc("GET /books/{id}/highlights", s.handleListHighlights)
@@ -129,6 +132,16 @@ func (s *Server) handleCreateBook(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, book)
 }
 
+func (s *Server) handleListBooks(w http.ResponseWriter, r *http.Request) {
+	books, err := s.bookRepo.List(r.Context())
+	if err != nil {
+		http.Error(w, "listing books", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, books)
+}
+
 func (s *Server) handleGetBook(w http.ResponseWriter, r *http.Request) {
 	book, err := s.bookRepo.FindByID(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -137,6 +150,28 @@ func (s *Server) handleGetBook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, book)
+}
+
+func (s *Server) handleGetBookFile(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	book, err := s.bookRepo.FindByID(ctx, r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "book not found", http.StatusNotFound)
+		return
+	}
+
+	file, err := s.storage.Open(ctx, book.SourcePath)
+	if err != nil {
+		http.Error(w, "opening file", http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	w.Header().Set("Content-Type", "application/pdf")
+	if _, err := io.Copy(w, file); err != nil {
+		return
+	}
 }
 
 func (s *Server) handleGetPage(w http.ResponseWriter, r *http.Request) {
