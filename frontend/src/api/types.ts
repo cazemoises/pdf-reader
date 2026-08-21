@@ -8,3 +8,10 @@ export interface Book {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface ReadingProgress {
+  bookId: string;
+  lastPage: number;
+  percentage: number;
+  updatedAt: string;
+}
