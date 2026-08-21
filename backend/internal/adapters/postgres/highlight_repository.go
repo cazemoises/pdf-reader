@@ -32,10 +32,10 @@ func NewHighlightRepository(db *sql.DB) *HighlightRepository {
 // Create stores a new Highlight.
 func (r *HighlightRepository) Create(ctx context.Context, highlight *domain.Highlight) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO highlights (id, book_id, page_number, box_x, box_y, box_width, box_height, color, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		`INSERT INTO highlights (id, book_id, page_number, start_offset, end_offset, color, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		highlight.ID, highlight.BookID, highlight.PageNumber,
-		highlight.Box.X, highlight.Box.Y, highlight.Box.Width, highlight.Box.Height,
+		highlight.Range.Start, highlight.Range.End,
 		highlight.Color, highlight.CreatedAt,
 	)
 	if err != nil {
@@ -48,7 +48,7 @@ func (r *HighlightRepository) Create(ctx context.Context, highlight *domain.High
 // ErrHighlightNotFound if it does not exist.
 func (r *HighlightRepository) FindByID(ctx context.Context, id string) (*domain.Highlight, error) {
 	row := r.db.QueryRowContext(ctx,
-		`SELECT id, book_id, page_number, box_x, box_y, box_width, box_height, color, created_at
+		`SELECT id, book_id, page_number, start_offset, end_offset, color, created_at
 		 FROM highlights WHERE id = $1`, id)
 
 	highlight, err := scanHighlight(row)
@@ -64,7 +64,7 @@ func (r *HighlightRepository) FindByID(ctx context.Context, id string) (*domain.
 // ListByBookID returns all Highlights belonging to the given Book.
 func (r *HighlightRepository) ListByBookID(ctx context.Context, bookID string) ([]*domain.Highlight, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, book_id, page_number, box_x, box_y, box_width, box_height, color, created_at
+		`SELECT id, book_id, page_number, start_offset, end_offset, color, created_at
 		 FROM highlights WHERE book_id = $1`, bookID)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: listing highlights: %w", err)
@@ -91,11 +91,11 @@ func (r *HighlightRepository) ListByBookID(ctx context.Context, bookID string) (
 func (r *HighlightRepository) Update(ctx context.Context, highlight *domain.Highlight) error {
 	result, err := r.db.ExecContext(ctx,
 		`UPDATE highlights
-		 SET book_id = $2, page_number = $3, box_x = $4, box_y = $5, box_width = $6, box_height = $7,
-		     color = $8, created_at = $9
+		 SET book_id = $2, page_number = $3, start_offset = $4, end_offset = $5,
+		     color = $6, created_at = $7
 		 WHERE id = $1`,
 		highlight.ID, highlight.BookID, highlight.PageNumber,
-		highlight.Box.X, highlight.Box.Y, highlight.Box.Width, highlight.Box.Height,
+		highlight.Range.Start, highlight.Range.End,
 		highlight.Color, highlight.CreatedAt,
 	)
 	if err != nil {
@@ -134,7 +134,7 @@ func scanHighlight(s rowScanner) (*domain.Highlight, error) {
 	var highlight domain.Highlight
 	if err := s.Scan(
 		&highlight.ID, &highlight.BookID, &highlight.PageNumber,
-		&highlight.Box.X, &highlight.Box.Y, &highlight.Box.Width, &highlight.Box.Height,
+		&highlight.Range.Start, &highlight.Range.End,
 		&highlight.Color, &highlight.CreatedAt,
 	); err != nil {
 		return nil, err

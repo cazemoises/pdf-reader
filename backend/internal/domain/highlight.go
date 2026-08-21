@@ -9,35 +9,38 @@ var (
 	ErrHighlightIDRequired        = errors.New("domain: highlight id is required")
 	ErrHighlightBookIDRequired    = errors.New("domain: highlight book id is required")
 	ErrHighlightPageNumberInvalid = errors.New("domain: highlight page number must be positive")
-	ErrHighlightBoxInvalid        = errors.New("domain: highlight bounding box is invalid")
+	ErrHighlightRangeInvalid      = errors.New("domain: highlight character range is invalid")
 	ErrHighlightColorRequired     = errors.New("domain: highlight color is required")
 )
 
-// BoundingBox describes the position and size of a highlighted region on a page.
-type BoundingBox struct {
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	Width  float64 `json:"width"`
-	Height float64 `json:"height"`
+// CharRange identifies a highlighted span of text by its start and end
+// character offsets within a page's plain text (as returned by
+// GET /books/{id}/pages/{number}). Start is inclusive, End is exclusive,
+// both 0-based - pageText[Start:End] is the highlighted substring.
+type CharRange struct {
+	Start int `json:"start"`
+	End   int `json:"end"`
 }
 
-// IsValid reports whether the box has a non-negative origin and a positive size.
-func (bb BoundingBox) IsValid() bool {
-	return bb.X >= 0 && bb.Y >= 0 && bb.Width > 0 && bb.Height > 0
+// IsValid reports whether the range has a non-negative start strictly
+// before its end.
+func (r CharRange) IsValid() bool {
+	return r.Start >= 0 && r.End > r.Start
 }
 
-// Highlight is a user-selected, colored region of text on a Book's page.
+// Highlight is a user-selected, colored span of text on a Book's page,
+// identified by its character offset range within that page's plain text.
 type Highlight struct {
-	ID         string      `json:"id"`
-	BookID     string      `json:"bookId"`
-	PageNumber int         `json:"pageNumber"`
-	Box        BoundingBox `json:"box"`
-	Color      string      `json:"color"`
-	CreatedAt  time.Time   `json:"createdAt"`
+	ID         string    `json:"id"`
+	BookID     string    `json:"bookId"`
+	PageNumber int       `json:"pageNumber"`
+	Range      CharRange `json:"range"`
+	Color      string    `json:"color"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 // NewHighlight creates a Highlight for the given book and page.
-func NewHighlight(id, bookID string, pageNumber int, box BoundingBox, color string) (*Highlight, error) {
+func NewHighlight(id, bookID string, pageNumber int, charRange CharRange, color string) (*Highlight, error) {
 	if id == "" {
 		return nil, ErrHighlightIDRequired
 	}
@@ -47,8 +50,8 @@ func NewHighlight(id, bookID string, pageNumber int, box BoundingBox, color stri
 	if pageNumber <= 0 {
 		return nil, ErrHighlightPageNumberInvalid
 	}
-	if !box.IsValid() {
-		return nil, ErrHighlightBoxInvalid
+	if !charRange.IsValid() {
+		return nil, ErrHighlightRangeInvalid
 	}
 	if color == "" {
 		return nil, ErrHighlightColorRequired
@@ -58,7 +61,7 @@ func NewHighlight(id, bookID string, pageNumber int, box BoundingBox, color stri
 		ID:         id,
 		BookID:     bookID,
 		PageNumber: pageNumber,
-		Box:        box,
+		Range:      charRange,
 		Color:      color,
 		CreatedAt:  time.Now(),
 	}, nil
