@@ -16,20 +16,26 @@ export interface ReadingProgress {
   updatedAt: string;
 }
 
-export interface BoundingBox {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
+export interface CharRange {
+  start: number;
+  end: number;
 }
 
 export interface Highlight {
   id: string;
   bookId: string;
   pageNumber: number;
-  box: BoundingBox;
+  range: CharRange;
   color: string;
   createdAt: string;
+}
+
+export interface Page {
+  bookId: string;
+  number: number;
+  text: string;
+  width: number;
+  height: number;
 }
 
 export interface Note {

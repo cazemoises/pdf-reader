@@ -1,4 +1,4 @@
-import type { Book, BoundingBox, Highlight, Note, ReadingProgress } from "./types";
+import type { Book, CharRange, Highlight, Note, Page, ReadingProgress } from "./types";
 
 async function parseJSONOrThrow<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -37,6 +37,11 @@ export function bookFileUrl(id: string): string {
   return `/books/${id}/file`;
 }
 
+export async function getPage(bookId: string, pageNumber: number): Promise<Page> {
+  const res = await fetch(`/books/${bookId}/pages/${pageNumber}`);
+  return parseJSONOrThrow<Page>(res);
+}
+
 // Returns null when the book has no saved progress yet (backend 404s in
 // that case) instead of treating it as an error.
 export async function getProgress(bookId: string): Promise<ReadingProgress | null> {
@@ -64,13 +69,13 @@ export async function saveProgress(
 export async function createHighlight(
   bookId: string,
   pageNumber: number,
-  box: BoundingBox,
+  range: CharRange,
   color: string,
 ): Promise<Highlight> {
   const res = await fetch(`/books/${bookId}/highlights`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pageNumber, box, color }),
+    body: JSON.stringify({ pageNumber, range, color }),
   });
   return parseJSONOrThrow<Highlight>(res);
 }
