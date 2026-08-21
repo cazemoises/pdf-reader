@@ -43,6 +43,7 @@ function ReaderPage() {
 
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   const [selectedColor, setSelectedColor] = useState(HIGHLIGHT_COLORS[0]);
   const [noteDraft, setNoteDraft] = useState("");
@@ -144,14 +145,19 @@ function ReaderPage() {
         const viewport = page.getViewport({ scale: PAGE_SCALE });
         const outputScale = window.devicePixelRatio || 1;
 
+        const cssWidth = Math.floor(viewport.width);
+        const cssHeight = Math.floor(viewport.height);
+
         canvas.width = Math.floor(viewport.width * outputScale);
         canvas.height = Math.floor(viewport.height * outputScale);
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
+        canvas.style.width = `${cssWidth}px`;
+        canvas.style.height = `${cssHeight}px`;
 
-        textLayerDiv.style.width = `${Math.floor(viewport.width)}px`;
-        textLayerDiv.style.height = `${Math.floor(viewport.height)}px`;
+        textLayerDiv.style.width = `${cssWidth}px`;
+        textLayerDiv.style.height = `${cssHeight}px`;
         textLayerDiv.replaceChildren();
+
+        setCanvasSize({ width: cssWidth, height: cssHeight });
 
         const transform =
           outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
@@ -356,6 +362,23 @@ function ReaderPage() {
         <div className="pageContainer">
           <canvas ref={canvasRef} />
           <div ref={textLayerRef} className="textLayer" onMouseUp={handleTextLayerMouseUp} />
+
+          {canvasSize.width > 0 &&
+            highlights
+              .filter((highlight) => highlight.pageNumber === pageNumber)
+              .map((highlight) => (
+                <div
+                  key={highlight.id}
+                  className="highlightMark"
+                  style={{
+                    left: highlight.box.x * canvasSize.width,
+                    top: highlight.box.y * canvasSize.height,
+                    width: highlight.box.width * canvasSize.width,
+                    height: highlight.box.height * canvasSize.height,
+                    backgroundColor: highlight.color,
+                  }}
+                />
+              ))}
 
           {pendingSelection && (
             <div

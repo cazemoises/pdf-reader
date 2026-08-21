@@ -30,6 +30,14 @@
   background: rgba(56, 189, 248, 0.4);
 }
 
+.highlightMark {
+  position: absolute;
+  z-index: 2;
+  border-radius: 2px;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 .highlightPopup {
   position: absolute;
   z-index: 3;
