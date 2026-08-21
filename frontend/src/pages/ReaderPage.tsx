@@ -157,6 +157,18 @@ function ReaderPage() {
 
         textLayerDiv.style.width = `${cssWidth}px`;
         textLayerDiv.style.height = `${cssHeight}px`;
+        // pdf.js's TextLayer positions/sizes every span via CSS calc()/round()
+        // expressions that read these custom properties from the container;
+        // without them the text layer overlay is unscaled and misaligned
+        // with the canvas, breaking mouse-based text selection.
+        textLayerDiv.style.setProperty("--scale-factor", `${viewport.scale}`);
+        textLayerDiv.style.setProperty("--user-unit", "1");
+        textLayerDiv.style.setProperty(
+          "--total-scale-factor",
+          "calc(var(--scale-factor) * var(--user-unit))",
+        );
+        textLayerDiv.style.setProperty("--scale-round-x", "1px");
+        textLayerDiv.style.setProperty("--scale-round-y", "1px");
         textLayerDiv.replaceChildren();
 
         setCanvasSize({ width: cssWidth, height: cssHeight });

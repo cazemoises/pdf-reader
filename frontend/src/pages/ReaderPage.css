@@ -14,6 +14,11 @@
   forced-color-adjust: none;
   transform-origin: 0 0;
   z-index: 1;
+  /* pdf.js sizes/positions each span from these; --min-font-size is set
+     on this element by TextLayer itself, the rest come from setLayerDimensions. */
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
 }
 
 .textLayer span,
@@ -24,6 +29,18 @@
   cursor: text;
   transform-origin: 0% 0%;
   user-select: text;
+}
+
+/* Without this, spans fall back to the browser default font-size/scale
+   instead of the PDF's actual glyph size, so the invisible selectable
+   text layer no longer lines up with what's drawn on the canvas. */
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
 }
 
 .textLayer ::selection {
