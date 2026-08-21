@@ -44,6 +44,7 @@ function ReaderPage() {
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   const [selectedColor, setSelectedColor] = useState(HIGHLIGHT_COLORS[0]);
   const [noteDraft, setNoteDraft] = useState("");
@@ -331,7 +332,16 @@ function ReaderPage() {
           <h1 className="text-lg font-medium">{book?.title ?? "Loading…"}</h1>
         </div>
 
-        {numPages > 0 && (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen((open) => !open)}
+            className="rounded-md border border-slate-700 px-3 py-1 text-sm"
+          >
+            Highlights ({highlights.length})
+          </button>
+
+          {numPages > 0 && (
           <div className="flex items-center gap-3 text-sm">
             <button
               type="button"
@@ -353,12 +363,14 @@ function ReaderPage() {
               Next
             </button>
           </div>
-        )}
+          )}
+        </div>
       </div>
 
       {error && <p className="px-6 py-4 text-red-400">{error}</p>}
 
-      <div className="flex justify-center overflow-auto p-6">
+      <div className="flex overflow-auto">
+        <div className="flex flex-1 justify-center p-6">
         <div className="pageContainer">
           <canvas ref={canvasRef} />
           <div ref={textLayerRef} className="textLayer" onMouseUp={handleTextLayerMouseUp} />
@@ -417,6 +429,46 @@ function ReaderPage() {
             </div>
           )}
         </div>
+        </div>
+
+        {sidebarOpen && (
+          <aside className="highlightsSidebar">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+              Highlights
+            </h2>
+
+            {highlights.length === 0 && (
+              <p className="text-sm text-slate-500">No highlights yet.</p>
+            )}
+
+            <ul className="highlightsList">
+              {highlights
+                .slice()
+                .sort((a, b) => a.pageNumber - b.pageNumber)
+                .map((highlight) => {
+                  const highlightNotes = notes.filter(
+                    (note) => note.highlightId === highlight.id,
+                  );
+                  return (
+                    <li key={highlight.id} className="highlightsListItem">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="colorDot"
+                          style={{ backgroundColor: highlight.color }}
+                        />
+                        <span className="text-sm">Page {highlight.pageNumber}</span>
+                      </div>
+                      {highlightNotes.map((note) => (
+                        <p key={note.id} className="highlightNoteText">
+                          {note.content}
+                        </p>
+                      ))}
+                    </li>
+                  );
+                })}
+            </ul>
+          </aside>
+        )}
       </div>
     </div>
   );

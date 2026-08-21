@@ -38,6 +38,42 @@
   pointer-events: none;
 }
 
+.highlightsSidebar {
+  width: 280px;
+  flex-shrink: 0;
+  padding: 16px;
+  border-left: 1px solid #1e293b;
+  overflow-y: auto;
+}
+
+.highlightsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.highlightsListItem {
+  padding: 8px;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  background: #0f172a;
+}
+
+.colorDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.highlightNoteText {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: #cbd5f5;
+  white-space: pre-wrap;
+}
+
 .highlightPopup {
   position: absolute;
   z-index: 3;
