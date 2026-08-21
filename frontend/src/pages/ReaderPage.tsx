@@ -14,13 +14,14 @@ import {
   saveProgress,
 } from "../api/client";
 import type { Book, BoundingBox, Highlight, Note } from "../api/types";
+import ThemeToggle from "../components/ThemeToggle";
 import "./ReaderPage.css";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
 
 const PAGE_SCALE = 1.4;
 
-const HIGHLIGHT_COLORS = ["#ffeb3b", "#4ade80", "#60a5fa", "#f472b6"];
+const HIGHLIGHT_COLORS = ["#d9a441", "#6fa87c", "#d98a6f", "#7fa3c2"];
 
 interface PendingSelection {
   pageNumber: number;
@@ -45,6 +46,7 @@ function ReaderPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chromeVisible, setChromeVisible] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   const [selectedColor, setSelectedColor] = useState(HIGHLIGHT_COLORS[0]);
   const [noteDraft, setNoteDraft] = useState("");
@@ -258,10 +260,10 @@ function ReaderPage() {
 
   function handleTextLayerMouseUp() {
     const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
-      return;
-    }
-    if (!selection.toString().trim()) {
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !selection.toString().trim()) {
+      // No text was dragged into a selection: treat this as a tap that
+      // shows/hides the reading chrome instead of starting a highlight.
+      setChromeVisible((visible) => !visible);
       return;
     }
 
@@ -331,60 +333,50 @@ function ReaderPage() {
   }
 
   if (!id) {
-    return <p className="p-6 text-red-400">Missing book id.</p>;
+    return <p className="p-6 text-danger">Missing book id.</p>;
   }
 
   const numPages = pdf?.numPages ?? 0;
+  const readingProgressPct = numPages > 0 ? (pageNumber / numPages) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="flex items-center justify-between border-b border-slate-800 px-6 py-3">
-        <div className="flex items-center gap-4">
-          <Link to="/" className="text-sm text-slate-400 hover:text-slate-100">
-            Back to books
-          </Link>
-          <h1 className="text-lg font-medium">{book?.title ?? "Loading…"}</h1>
-        </div>
+    <div className="min-h-screen bg-reading font-sans text-ink">
+      {/* Thin progress line — always visible, independent of the hideable chrome. */}
+      <div className="fixed left-0 right-0 top-0 z-30 h-0.5 bg-border">
+        <div className="h-full bg-accent" style={{ width: `${readingProgressPct}%` }} />
+      </div>
 
-        <div className="flex items-center gap-3">
+      {/* Top chrome: hidden by default, revealed by tapping the reading area. */}
+      <div
+        className={
+          "fixed left-0 right-0 top-0 z-20 flex items-center justify-between border-b border-border bg-elevated/95 px-3 py-3 transition-opacity duration-150 " +
+          (chromeVisible ? "opacity-100" : "pointer-events-none opacity-0")
+        }
+      >
+        <Link
+          to="/"
+          className="flex h-11 w-11 items-center justify-center rounded-full text-lg text-ink"
+          aria-label="Voltar para a biblioteca"
+        >
+          ‹
+        </Link>
+        <span className="truncate px-2 text-sm font-semibold">{book?.title ?? "Carregando…"}</span>
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
           <button
             type="button"
             onClick={() => setSidebarOpen((open) => !open)}
-            className="rounded-md border border-slate-700 px-3 py-1 text-sm"
+            aria-label={`Notas (${highlights.length})`}
+            className="flex h-11 w-11 items-center justify-center rounded-full text-base text-ink"
           >
-            Highlights ({highlights.length})
+            ≡
           </button>
-
-          {numPages > 0 && (
-          <div className="flex items-center gap-3 text-sm">
-            <button
-              type="button"
-              onClick={() => setPageNumber((n) => Math.max(1, n - 1))}
-              disabled={pageNumber <= 1}
-              className="rounded-md border border-slate-700 px-3 py-1 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <span>
-              Page {pageNumber} of {numPages}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPageNumber((n) => Math.min(numPages, n + 1))}
-              disabled={pageNumber >= numPages}
-              className="rounded-md border border-slate-700 px-3 py-1 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Next
-            </button>
-          </div>
-          )}
         </div>
       </div>
 
-      {error && <p className="px-6 py-4 text-red-400">{error}</p>}
+      {error && <p className="fixed left-0 right-0 top-12 z-20 bg-danger-soft px-4 py-2 text-sm text-danger">{error}</p>}
 
-      <div className="flex overflow-auto">
-        <div className="flex flex-1 justify-center p-6">
+      <div className="flex justify-center overflow-auto pb-6 pt-6">
         <div className="pageContainer">
           <canvas ref={canvasRef} />
           <div ref={textLayerRef} className="textLayer" onMouseUp={handleTextLayerMouseUp} />
@@ -408,16 +400,17 @@ function ReaderPage() {
 
           {pendingSelection && (
             <div
-              className="highlightPopup"
+              className="absolute z-30 flex min-w-[200px] flex-col gap-2 rounded-lg border border-border bg-elevated p-2.5 shadow-[0_8px_20px_rgba(0,0,0,0.3)]"
               style={{ left: pendingSelection.anchorX, top: pendingSelection.anchorY }}
             >
-              <div className="highlightPopupColors">
+              <div className="flex gap-1.5">
                 {HIGHLIGHT_COLORS.map((color) => (
                   <button
                     key={color}
                     type="button"
                     className={
-                      "colorSwatch" + (color === selectedColor ? " colorSwatch--selected" : "")
+                      "h-5 w-5 rounded-full border-2 " +
+                      (color === selectedColor ? "border-ink" : "border-transparent")
                     }
                     style={{ backgroundColor: color }}
                     onClick={() => setSelectedColor(color)}
@@ -426,36 +419,98 @@ function ReaderPage() {
                 ))}
               </div>
               <textarea
-                className="highlightPopupNote"
-                placeholder="Add a note (optional)"
+                className="resize-none rounded border border-border bg-background p-1.5 text-sm text-ink outline-none"
+                placeholder="Adicionar uma nota (opcional)"
                 value={noteDraft}
                 onChange={(event) => setNoteDraft(event.target.value)}
                 rows={2}
               />
-              <div className="highlightPopupActions">
-                <button type="button" onClick={handleCancelHighlight}>
-                  Cancel
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={handleCancelHighlight}
+                  className="rounded border border-border px-2.5 py-1 text-sm text-ink"
+                >
+                  Cancelar
                 </button>
-                <button type="button" onClick={() => void handleConfirmHighlight()}>
-                  Save highlight
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmHighlight()}
+                  className="rounded bg-accent px-2.5 py-1 text-sm font-semibold text-accent-text"
+                >
+                  Salvar
                 </button>
               </div>
             </div>
           )}
         </div>
-        </div>
+      </div>
 
-        {sidebarOpen && (
-          <aside className="highlightsSidebar">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
-              Highlights
-            </h2>
+      {/* Bottom chrome: page navigation, hidden with the same tap gesture as the top bar. */}
+      {numPages > 0 && (
+        <div
+          className={
+            "fixed bottom-0 left-0 right-0 z-20 flex flex-col items-center gap-2 border-t border-border bg-elevated/95 px-5 py-3.5 transition-opacity duration-150 " +
+            (chromeVisible ? "opacity-100" : "pointer-events-none opacity-0")
+          }
+        >
+          <div className="h-0.5 w-full overflow-hidden rounded-full bg-border">
+            <div className="h-full bg-accent" style={{ width: `${readingProgressPct}%` }} />
+          </div>
+          <div className="flex w-full items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setPageNumber((n) => Math.max(1, n - 1))}
+              disabled={pageNumber <= 1}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-ink disabled:cursor-not-allowed disabled:opacity-30"
+              aria-label="Página anterior"
+            >
+              ‹
+            </button>
+            <span className="text-xs tabular-nums text-ink-faint">
+              {pageNumber} de {numPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPageNumber((n) => Math.min(numPages, n + 1))}
+              disabled={pageNumber >= numPages}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-ink disabled:cursor-not-allowed disabled:opacity-30"
+              aria-label="Próxima página"
+            >
+              ›
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Notes bottom sheet */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/30" onClick={() => setSidebarOpen(false)}>
+          <aside
+            className="flex max-h-[70vh] w-full max-w-lg flex-col gap-4 rounded-t-[20px] bg-elevated px-5 pb-6 pt-2.5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mx-auto h-1 w-9 rounded-full bg-border" />
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-serif text-lg font-semibold">Notas — {book?.title ?? ""}</h2>
+                <p className="mt-0.5 text-xs text-ink-muted">{highlights.length} highlights</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(false)}
+                aria-label="Fechar"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-border text-sm text-ink-muted"
+              >
+                ✕
+              </button>
+            </div>
 
             {highlights.length === 0 && (
-              <p className="text-sm text-slate-500">No highlights yet.</p>
+              <p className="text-sm text-ink-faint">No highlights yet.</p>
             )}
 
-            <ul className="highlightsList">
+            <ul className="flex flex-col gap-4 overflow-auto pb-2">
               {highlights
                 .slice()
                 .sort((a, b) => a.pageNumber - b.pageNumber)
@@ -464,16 +519,16 @@ function ReaderPage() {
                     (note) => note.highlightId === highlight.id,
                   );
                   return (
-                    <li key={highlight.id} className="highlightsListItem">
+                    <li key={highlight.id} className="flex flex-col gap-1.5">
                       <div className="flex items-center gap-2">
                         <span
-                          className="colorDot"
+                          className="h-[9px] w-[9px] shrink-0 rounded-full"
                           style={{ backgroundColor: highlight.color }}
                         />
-                        <span className="text-sm">Page {highlight.pageNumber}</span>
+                        <span className="text-[11px] text-ink-faint">Página {highlight.pageNumber}</span>
                       </div>
                       {highlightNotes.map((note) => (
-                        <p key={note.id} className="highlightNoteText">
+                        <p key={note.id} className="whitespace-pre-wrap text-sm text-ink-muted">
                           {note.content}
                         </p>
                       ))}
@@ -482,8 +537,8 @@ function ReaderPage() {
                 })}
             </ul>
           </aside>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

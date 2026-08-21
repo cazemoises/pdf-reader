@@ -44,7 +44,7 @@
 }
 
 .textLayer ::selection {
-  background: rgba(56, 189, 248, 0.4);
+  background: var(--color-accent-soft);
 }
 
 .highlightMark {
@@ -53,97 +53,4 @@
   border-radius: 2px;
   opacity: 0.35;
   pointer-events: none;
-}
-
-.highlightsSidebar {
-  width: 280px;
-  flex-shrink: 0;
-  padding: 16px;
-  border-left: 1px solid #1e293b;
-  overflow-y: auto;
-}
-
-.highlightsList {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.highlightsListItem {
-  padding: 8px;
-  border: 1px solid #1e293b;
-  border-radius: 6px;
-  background: #0f172a;
-}
-
-.colorDot {
-  width: 10px;
-  height: 10px;
-  border-radius: 9999px;
-  flex-shrink: 0;
-}
-
-.highlightNoteText {
-  margin-top: 6px;
-  font-size: 0.8rem;
-  color: #cbd5f5;
-  white-space: pre-wrap;
-}
-
-.highlightPopup {
-  position: absolute;
-  z-index: 3;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 200px;
-  padding: 10px;
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 8px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
-}
-
-.highlightPopupColors {
-  display: flex;
-  gap: 6px;
-}
-
-.colorSwatch {
-  width: 20px;
-  height: 20px;
-  border-radius: 9999px;
-  border: 2px solid transparent;
-  cursor: pointer;
-}
-
-.colorSwatch--selected {
-  border-color: #f8fafc;
-}
-
-.highlightPopupNote {
-  resize: none;
-  border-radius: 4px;
-  border: 1px solid #334155;
-  background: #0f172a;
-  color: #f8fafc;
-  padding: 6px;
-  font-size: 0.85rem;
-}
-
-.highlightPopupActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.highlightPopupActions button {
-  border: 1px solid #334155;
-  border-radius: 4px;
-  padding: 4px 10px;
-  font-size: 0.85rem;
-  background: transparent;
-  color: #f8fafc;
-  cursor: pointer;
 }
