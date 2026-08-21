@@ -100,8 +100,8 @@ func mustCreateTestBookForHighlights(t *testing.T, ctx context.Context, db *sql.
 func newTestHighlight(t *testing.T, id, bookID string, pageNumber int) *domain.Highlight {
 	t.Helper()
 
-	box := domain.BoundingBox{X: 10, Y: 20, Width: 100, Height: 30}
-	highlight, err := domain.NewHighlight(id, bookID, pageNumber, box, "yellow")
+	charRange := domain.CharRange{Start: 10, End: 40}
+	highlight, err := domain.NewHighlight(id, bookID, pageNumber, charRange, "yellow")
 	if err != nil {
 		t.Fatalf("building test highlight: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestHighlightRepository_CreateThenFindByID_RoundTrips(t *testing.T) {
 	}
 
 	if got.ID != want.ID || got.BookID != want.BookID || got.PageNumber != want.PageNumber ||
-		got.Box != want.Box || got.Color != want.Color {
+		got.Range != want.Range || got.Color != want.Color {
 		t.Errorf("FindByID = %+v, want %+v", got, want)
 	}
 	assertTimesClose(t, "CreatedAt", got.CreatedAt, want.CreatedAt)

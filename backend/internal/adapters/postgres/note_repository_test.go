@@ -103,8 +103,8 @@ func mustCreateTestBookForNotes(t *testing.T, ctx context.Context, db *sql.DB, i
 func mustCreateTestHighlightForNotes(t *testing.T, ctx context.Context, db *sql.DB, id, bookID string) *domain.Highlight {
 	t.Helper()
 
-	box := domain.BoundingBox{X: 10, Y: 20, Width: 100, Height: 30}
-	highlight, err := domain.NewHighlight(id, bookID, 1, box, "yellow")
+	charRange := domain.CharRange{Start: 10, End: 40}
+	highlight, err := domain.NewHighlight(id, bookID, 1, charRange, "yellow")
 	if err != nil {
 		t.Fatalf("building test highlight: %v", err)
 	}
