@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { GlobalWorkerOptions, TextLayer, getDocument } from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.mjs?url";
-import { bookFileUrl, getBook, getProgress } from "../api/client";
+import { bookFileUrl, getBook, getProgress, saveProgress } from "../api/client";
 import type { Book } from "../api/types";
 import "./ReaderPage.css";
 
@@ -158,6 +158,22 @@ function ReaderPage() {
       cancelled = true;
     };
   }, [pdf, pageNumber]);
+
+  useEffect(() => {
+    if (!pdf || !id || !progressReady) {
+      return;
+    }
+
+    if (skipNextSaveRef.current) {
+      skipNextSaveRef.current = false;
+      return;
+    }
+
+    const percentage = (pageNumber / pdf.numPages) * 100;
+    saveProgress(id, pageNumber, percentage).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : "failed to save reading progress");
+    });
+  }, [pdf, id, pageNumber, progressReady]);
 
   if (!id) {
     return <p className="p-6 text-red-400">Missing book id.</p>;
