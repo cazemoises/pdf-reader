@@ -401,7 +401,11 @@ function ReaderPage() {
           {pendingSelection && (
             <div
               className="absolute z-30 flex min-w-[200px] flex-col gap-2 rounded-lg border border-border bg-elevated p-2.5 shadow-[0_8px_20px_rgba(0,0,0,0.3)]"
-              style={{ left: pendingSelection.anchorX, top: pendingSelection.anchorY }}
+              style={
+                pendingSelection.anchorX > canvasSize.width / 2
+                  ? { right: canvasSize.width - pendingSelection.anchorX, top: pendingSelection.anchorY }
+                  : { left: pendingSelection.anchorX, top: pendingSelection.anchorY }
+              }
             >
               <div className="flex gap-1.5">
                 {HIGHLIGHT_COLORS.map((color) => (
