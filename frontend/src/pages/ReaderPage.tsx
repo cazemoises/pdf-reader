@@ -1,56 +1,65 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { GlobalWorkerOptions, TextLayer, getDocument } from "pdfjs-dist";
-import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
+import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
 import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.mjs?url";
 import {
   bookFileUrl,
   createHighlight,
   createNote,
   getBook,
+  getPage,
   getProgress,
   listHighlights,
   listNotes,
   saveProgress,
 } from "../api/client";
-import type { Book, BoundingBox, Highlight, Note } from "../api/types";
+import type { Book, CharRange, Highlight, Note } from "../api/types";
+import { paragraphOffsets, reflowPageText } from "../lib/pageText";
+import { highlightBackground, segmentParagraph, selectionToRange } from "../lib/highlightLayout";
 import ThemeToggle from "../components/ThemeToggle";
 import "./ReaderPage.css";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
 
-const PAGE_SCALE = 1.4;
-
 const HIGHLIGHT_COLORS = ["#d9a441", "#6fa87c", "#d98a6f", "#7fa3c2"];
 
 interface PendingSelection {
   pageNumber: number;
-  box: BoundingBox;
+  range: CharRange;
   anchorX: number;
   anchorY: number;
+  containerWidth: number;
+}
+
+interface PageText {
+  paragraphs: string[];
+  offsets: number[];
 }
 
 function ReaderPage() {
   const { id } = useParams<{ id: string }>();
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const textLayerRef = useRef<HTMLDivElement | null>(null);
+  const textContainerRef = useRef<HTMLDivElement | null>(null);
 
   const [book, setBook] = useState<Book | null>(null);
-  const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
+  const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
+  const [pageText, setPageText] = useState<PageText | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progressReady, setProgressReady] = useState(false);
   const skipNextSaveRef = useRef(false);
 
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
-  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(false);
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   const [selectedColor, setSelectedColor] = useState(HIGHLIGHT_COLORS[0]);
   const [noteDraft, setNoteDraft] = useState("");
 
+  // pdf.js is kept for exactly one purpose: reading numPages from the PDF
+  // binary's metadata. The backend has no page-count endpoint, and adding
+  // one is out of scope here, so this loads the document only to read
+  // that field and immediately destroys it - no canvas, no rendering.
   useEffect(() => {
     if (!id) {
       return;
@@ -73,15 +82,14 @@ function ReaderPage() {
     const loadingTask = getDocument({ url: bookFileUrl(id) });
     loadingTask.promise
       .then((doc) => {
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setNumPages(doc.numPages);
         }
-        setPdf(doc);
-        setPageNumber(1);
+        void loadingTask.destroy();
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "failed to load PDF");
+          setError(err instanceof Error ? err.message : "failed to load PDF metadata");
         }
       });
 
@@ -92,7 +100,7 @@ function ReaderPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!pdf || !id) {
+    if (numPages === null || !id) {
       return;
     }
 
@@ -104,7 +112,7 @@ function ReaderPage() {
         if (cancelled || !progress) {
           return;
         }
-        if (progress.lastPage >= 1 && progress.lastPage <= pdf.numPages) {
+        if (progress.lastPage >= 1 && progress.lastPage <= numPages) {
           skipNextSaveRef.current = true;
           setPageNumber(progress.lastPage);
         }
@@ -123,88 +131,34 @@ function ReaderPage() {
     return () => {
       cancelled = true;
     };
-  }, [pdf, id]);
+  }, [numPages, id]);
 
   useEffect(() => {
-    if (!pdf) {
-      return;
-    }
-
-    const canvas = canvasRef.current;
-    const textLayerDiv = textLayerRef.current;
-    if (!canvas || !textLayerDiv) {
+    if (!id) {
       return;
     }
 
     let cancelled = false;
-    let renderTask: RenderTask | null = null;
+    setPageText(null);
 
-    pdf
-      .getPage(pageNumber)
-      .then(async (page) => {
+    getPage(id, pageNumber)
+      .then((page) => {
         if (cancelled) {
           return;
         }
-
-        const viewport = page.getViewport({ scale: PAGE_SCALE });
-        const outputScale = window.devicePixelRatio || 1;
-
-        const cssWidth = Math.floor(viewport.width);
-        const cssHeight = Math.floor(viewport.height);
-
-        canvas.width = Math.floor(viewport.width * outputScale);
-        canvas.height = Math.floor(viewport.height * outputScale);
-        canvas.style.width = `${cssWidth}px`;
-        canvas.style.height = `${cssHeight}px`;
-
-        textLayerDiv.style.width = `${cssWidth}px`;
-        textLayerDiv.style.height = `${cssHeight}px`;
-        // pdf.js's TextLayer positions/sizes every span via CSS calc()/round()
-        // expressions that read these custom properties from the container;
-        // without them the text layer overlay is unscaled and misaligned
-        // with the canvas, breaking mouse-based text selection.
-        textLayerDiv.style.setProperty("--scale-factor", `${viewport.scale}`);
-        textLayerDiv.style.setProperty("--user-unit", "1");
-        textLayerDiv.style.setProperty(
-          "--total-scale-factor",
-          "calc(var(--scale-factor) * var(--user-unit))",
-        );
-        textLayerDiv.style.setProperty("--scale-round-x", "1px");
-        textLayerDiv.style.setProperty("--scale-round-y", "1px");
-        textLayerDiv.replaceChildren();
-
-        setCanvasSize({ width: cssWidth, height: cssHeight });
-
-        const transform =
-          outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
-
-        renderTask = page.render({ canvas, transform, viewport });
-        await renderTask.promise;
-        if (cancelled) {
-          return;
-        }
-
-        const textLayer = new TextLayer({
-          textContentSource: page.streamTextContent({
-            includeMarkedContent: true,
-            disableNormalization: true,
-          }),
-          container: textLayerDiv,
-          viewport,
-        });
-        await textLayer.render();
+        const paragraphs = reflowPageText(page.text);
+        setPageText({ paragraphs, offsets: paragraphOffsets(paragraphs) });
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "failed to render page");
+          setError(err instanceof Error ? err.message : "failed to load page text");
         }
       });
 
     return () => {
       cancelled = true;
-      renderTask?.cancel();
     };
-  }, [pdf, pageNumber]);
+  }, [id, pageNumber]);
 
   useEffect(() => {
     if (!id) {
@@ -243,7 +197,7 @@ function ReaderPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!pdf || !id || !progressReady) {
+    if (numPages === null || !id || !progressReady) {
       return;
     }
 
@@ -252,13 +206,13 @@ function ReaderPage() {
       return;
     }
 
-    const percentage = (pageNumber / pdf.numPages) * 100;
+    const percentage = (pageNumber / numPages) * 100;
     saveProgress(id, pageNumber, percentage).catch((err: unknown) => {
       setError(err instanceof Error ? err.message : "failed to save reading progress");
     });
-  }, [pdf, id, pageNumber, progressReady]);
+  }, [numPages, id, pageNumber, progressReady]);
 
-  function handleTextLayerMouseUp() {
+  function handleContainerMouseUp() {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !selection.toString().trim()) {
       // No text was dragged into a selection: treat this as a tap that
@@ -267,33 +221,28 @@ function ReaderPage() {
       return;
     }
 
-    const canvas = canvasRef.current;
-    if (!canvas) {
+    const container = textContainerRef.current;
+    if (!container) {
       return;
     }
 
-    const canvasRect = canvas.getBoundingClientRect();
+    const range = selectionToRange(container, selection);
+    if (!range) {
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
     const selectionRect = selection.getRangeAt(0).getBoundingClientRect();
-    if (canvasRect.width === 0 || canvasRect.height === 0) {
-      return;
-    }
-
-    const box: BoundingBox = {
-      x: Math.max(0, (selectionRect.left - canvasRect.left) / canvasRect.width),
-      y: Math.max(0, (selectionRect.top - canvasRect.top) / canvasRect.height),
-      width: selectionRect.width / canvasRect.width,
-      height: selectionRect.height / canvasRect.height,
-    };
-
-    if (box.width <= 0 || box.height <= 0) {
+    if (containerRect.width === 0) {
       return;
     }
 
     setPendingSelection({
       pageNumber,
-      box,
-      anchorX: selectionRect.right - canvasRect.left,
-      anchorY: selectionRect.bottom - canvasRect.top,
+      range,
+      anchorX: selectionRect.right - containerRect.left,
+      anchorY: selectionRect.bottom - containerRect.top,
+      containerWidth: containerRect.width,
     });
     setSelectedColor(HIGHLIGHT_COLORS[0]);
     setNoteDraft("");
@@ -313,7 +262,7 @@ function ReaderPage() {
       const highlight = await createHighlight(
         id,
         pendingSelection.pageNumber,
-        pendingSelection.box,
+        pendingSelection.range,
         selectedColor,
       );
       setHighlights((prev) => [...prev, highlight]);
@@ -336,8 +285,8 @@ function ReaderPage() {
     return <p className="p-6 text-danger">Missing book id.</p>;
   }
 
-  const numPages = pdf?.numPages ?? 0;
-  const readingProgressPct = numPages > 0 ? (pageNumber / numPages) * 100 : 0;
+  const readingProgressPct = numPages ? (pageNumber / numPages) * 100 : 0;
+  const pageHighlights = highlights.filter((highlight) => highlight.pageNumber === pageNumber);
 
   return (
     <div className="min-h-screen bg-reading font-sans text-ink">
@@ -376,34 +325,33 @@ function ReaderPage() {
 
       {error && <p className="fixed left-0 right-0 top-12 z-20 bg-danger-soft px-4 py-2 text-sm text-danger">{error}</p>}
 
-      <div className="flex justify-center overflow-auto pb-6 pt-6">
-        <div className="pageContainer">
-          <canvas ref={canvasRef} />
-          <div ref={textLayerRef} className="textLayer" onMouseUp={handleTextLayerMouseUp} />
-
-          {canvasSize.width > 0 &&
-            highlights
-              .filter((highlight) => highlight.pageNumber === pageNumber)
-              .map((highlight) => (
-                <div
-                  key={highlight.id}
-                  className="highlightMark"
-                  style={{
-                    left: highlight.box.x * canvasSize.width,
-                    top: highlight.box.y * canvasSize.height,
-                    width: highlight.box.width * canvasSize.width,
-                    height: highlight.box.height * canvasSize.height,
-                    backgroundColor: highlight.color,
-                  }}
-                />
-              ))}
+      <div className="flex justify-center overflow-auto pb-24 pt-16">
+        <div className="relative w-full">
+          <div ref={textContainerRef} className="readingColumn" onMouseUp={handleContainerMouseUp}>
+            {pageText?.paragraphs.map((paragraph, index) => (
+              <p key={index}>
+                {segmentParagraph(paragraph, pageText.offsets[index], pageHighlights).map((segment, segIndex) =>
+                  segment.highlight ? (
+                    <mark
+                      key={segIndex}
+                      style={{ backgroundColor: highlightBackground(segment.highlight.color) }}
+                    >
+                      {segment.text}
+                    </mark>
+                  ) : (
+                    <span key={segIndex}>{segment.text}</span>
+                  ),
+                )}
+              </p>
+            ))}
+          </div>
 
           {pendingSelection && (
             <div
               className="absolute z-30 flex min-w-[200px] flex-col gap-2 rounded-lg border border-border bg-elevated p-2.5 shadow-[0_8px_20px_rgba(0,0,0,0.3)]"
               style={
-                pendingSelection.anchorX > canvasSize.width / 2
-                  ? { right: canvasSize.width - pendingSelection.anchorX, top: pendingSelection.anchorY }
+                pendingSelection.anchorX > pendingSelection.containerWidth / 2
+                  ? { right: pendingSelection.containerWidth - pendingSelection.anchorX, top: pendingSelection.anchorY }
                   : { left: pendingSelection.anchorX, top: pendingSelection.anchorY }
               }
             >
@@ -451,7 +399,7 @@ function ReaderPage() {
       </div>
 
       {/* Bottom chrome: page navigation, hidden with the same tap gesture as the top bar. */}
-      {numPages > 0 && (
+      {numPages !== null && (
         <div
           className={
             "fixed bottom-0 left-0 right-0 z-20 flex flex-col items-center gap-2 border-t border-border bg-elevated/95 px-5 py-3.5 transition-opacity duration-150 " +
