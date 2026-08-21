@@ -52,6 +52,35 @@ import (
 	"pdf-reader/backend/internal/ports"
 )
 
+// sharedTestDBLockKey identifies a Postgres session-level advisory lock
+// used to serialize this package's integration tests against tests in
+// other packages (e.g. postgres_test) that point at the same database and
+// TRUNCATE the same tables. `go test ./...` runs different packages' test
+// binaries concurrently by default; without this lock, one package
+// truncating a table while another package's test is mid-flight against
+// that same table causes real Postgres deadlocks and silently lost rows.
+// This numeric key must match the one duplicated in postgres_test for the
+// lock to actually coordinate across packages.
+const sharedTestDBLockKey int64 = 78412093651
+
+// lockSharedTestDB acquires sharedTestDBLockKey and holds it for the
+// lifetime of the test. It pins db to a single pooled connection first, so
+// the advisory lock (which is tied to the connection that took it) can't
+// be silently dropped by the pool checking that connection back in.
+func lockSharedTestDB(t *testing.T, ctx context.Context, db *sql.DB) {
+	t.Helper()
+
+	db.SetMaxOpenConns(1)
+	if _, err := db.ExecContext(ctx, "SELECT pg_advisory_lock($1)", sharedTestDBLockKey); err != nil {
+		t.Fatalf("acquiring shared test db lock: %v", err)
+	}
+	t.Cleanup(func() {
+		if _, err := db.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1)", sharedTestDBLockKey); err != nil {
+			t.Logf("releasing shared test db lock: %v", err)
+		}
+	})
+}
+
 func openTestDBForServer(t *testing.T) *sql.DB {
 	t.Helper()
 
@@ -71,6 +100,7 @@ func openTestDBForServer(t *testing.T) *sql.DB {
 	if err := db.PingContext(ctx); err != nil {
 		t.Fatalf("pinging database: %v", err)
 	}
+	lockSharedTestDB(t, ctx, db)
 
 	for _, migration := range []string{"0001_create_books.sql", "0002_create_pages.sql", "0003_create_highlights.sql", "0004_create_notes.sql", "0005_create_reading_progress.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", migration))

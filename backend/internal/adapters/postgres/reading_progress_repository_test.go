@@ -60,6 +60,7 @@ func openTestDBForReadingProgress(t *testing.T) *sql.DB {
 	if err := db.PingContext(ctx); err != nil {
 		t.Fatalf("pinging database: %v", err)
 	}
+	lockSharedTestDB(t, ctx, db)
 
 	for _, migration := range []string{"0001_create_books.sql", "0002_create_pages.sql", "0003_create_highlights.sql", "0004_create_notes.sql", "0005_create_reading_progress.sql"} {
 		schema, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", migration))
