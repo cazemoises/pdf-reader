@@ -76,10 +76,13 @@ services:
       retries: 5
     networks:
       - pdf-reader-net
+      - shared-services
 
 networks:
   pdf-reader-net:
     driver: bridge
+  shared-services:
+    external: true
 
 volumes:
   postgres-data:
