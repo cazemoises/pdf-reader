@@ -212,12 +212,9 @@ function ReaderPage() {
     });
   }, [numPages, id, pageNumber, progressReady]);
 
-  function handleContainerMouseUp() {
+  function handleSelection() {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !selection.toString().trim()) {
-      // No text was dragged into a selection: treat this as a tap that
-      // shows/hides the reading chrome instead of starting a highlight.
-      setChromeVisible((visible) => !visible);
       return;
     }
 
@@ -247,6 +244,57 @@ function ReaderPage() {
     setSelectedColor(HIGHLIGHT_COLORS[0]);
     setNoteDraft("");
   }
+
+  function handleContainerMouseUp() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.toString().trim()) {
+      setChromeVisible((visible) => !visible);
+      return;
+    }
+    handleSelection();
+  }
+
+  function handleContainerTouchEnd() {
+    // Android finalizes the Selection asynchronously after touchend. Let the
+    // browser update it before converting the range to character offsets.
+    window.setTimeout(handleSelection, 0);
+  }
+
+  function handleContextMenu(event: React.MouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+  }
+
+  useEffect(() => {
+    const container = textContainerRef.current;
+    if (!container) {
+      return;
+    }
+    const readerContainer = container;
+
+    let selectionTimer: number | undefined;
+    function handleSelectionChange() {
+      const selection = window.getSelection();
+      if (
+        !selection ||
+        selection.isCollapsed ||
+        selection.rangeCount === 0 ||
+        !selection.toString().trim() ||
+        !readerContainer.contains(selection.anchorNode) ||
+        !readerContainer.contains(selection.focusNode)
+      ) {
+        return;
+      }
+
+      window.clearTimeout(selectionTimer);
+      selectionTimer = window.setTimeout(handleSelection, 50);
+    }
+
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => {
+      document.removeEventListener("selectionchange", handleSelectionChange);
+      window.clearTimeout(selectionTimer);
+    };
+  }, [pageNumber, pageText]);
 
   function handleCancelHighlight() {
     setPendingSelection(null);
@@ -298,7 +346,7 @@ function ReaderPage() {
       {/* Top chrome: hidden by default, revealed by tapping the reading area. */}
       <div
         className={
-          "fixed left-0 right-0 top-0 z-20 flex items-center justify-between border-b border-border bg-elevated/95 px-3 py-3 transition-opacity duration-150 " +
+          "fixed left-0 right-0 top-0 z-20 flex items-center justify-between border-b border-border bg-elevated px-3 py-3 transition-opacity duration-150 " +
           (chromeVisible ? "opacity-100" : "pointer-events-none opacity-0")
         }
       >
@@ -327,7 +375,13 @@ function ReaderPage() {
 
       <div className="flex justify-center overflow-auto pb-24 pt-16">
         <div className="relative w-full">
-          <div ref={textContainerRef} className="readingColumn" onMouseUp={handleContainerMouseUp}>
+          <div
+            ref={textContainerRef}
+            className="readingColumn"
+            onMouseUp={handleContainerMouseUp}
+            onTouchEnd={handleContainerTouchEnd}
+            onContextMenu={handleContextMenu}
+          >
             {pageText?.paragraphs.map((paragraph, index) => (
               <p key={index}>
                 {segmentParagraph(paragraph, pageText.offsets[index], pageHighlights).map((segment, segIndex) =>
@@ -402,7 +456,7 @@ function ReaderPage() {
       {numPages !== null && (
         <div
           className={
-            "fixed bottom-0 left-0 right-0 z-20 flex flex-col items-center gap-2 border-t border-border bg-elevated/95 px-5 py-3.5 transition-opacity duration-150 " +
+            "fixed bottom-0 left-0 right-0 z-20 flex flex-col items-center gap-2 border-t border-border bg-elevated px-5 py-3.5 transition-opacity duration-150 " +
             (chromeVisible ? "opacity-100" : "pointer-events-none opacity-0")
           }
         >
