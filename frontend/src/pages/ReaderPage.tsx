@@ -46,7 +46,9 @@ function ReaderPage() {
   const [pageText, setPageText] = useState<PageText | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progressReady, setProgressReady] = useState(false);
+  const [resumeOffset, setResumeOffset] = useState<number | null>(null);
   const skipNextSaveRef = useRef(false);
+  const resumeFlashTimerRef = useRef<number | undefined>(undefined);
 
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -115,6 +117,7 @@ function ReaderPage() {
         if (progress.lastPage >= 1 && progress.lastPage <= numPages) {
           skipNextSaveRef.current = true;
           setPageNumber(progress.lastPage);
+          setResumeOffset(progress.pageNumber === progress.lastPage ? progress.characterOffset : 0);
         }
       })
       .catch((err: unknown) => {
@@ -211,6 +214,87 @@ function ReaderPage() {
       setError(err instanceof Error ? err.message : "failed to save reading progress");
     });
   }, [numPages, id, pageNumber, progressReady]);
+
+  function firstVisibleOffset(): number {
+    const container = textContainerRef.current;
+    if (!container || !pageText) {
+      return 0;
+    }
+
+    const top = Math.max(0, container.getBoundingClientRect().top);
+    const paragraphs = Array.from(container.children);
+    for (let paragraphIndex = 0; paragraphIndex < paragraphs.length; paragraphIndex++) {
+      const paragraph = paragraphs[paragraphIndex];
+      const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      let offset = pageText.offsets[paragraphIndex];
+      while (node) {
+        const text = node.textContent ?? "";
+        for (let index = 0; index < text.length; index++) {
+          const range = document.createRange();
+          range.setStart(node, index);
+          range.setEnd(node, index + 1);
+          const rects = range.getClientRects();
+          if (Array.from(rects).some((rect) => rect.bottom > top + 1)) {
+            return offset + index;
+          }
+        }
+        offset += text.length;
+        node = walker.nextNode();
+      }
+    }
+    return 0;
+  }
+
+  function savePosition(source: "auto" | "manual", targetPage: number, offset: number) {
+    if (!id || numPages === null) {
+      return Promise.resolve();
+    }
+    return saveProgress(
+      id,
+      targetPage,
+      (targetPage / numPages) * 100,
+      targetPage,
+      offset,
+      source,
+    ).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : "failed to save reading position");
+    });
+  }
+
+  useEffect(() => {
+    return () => {
+      if (progressReady && pageText) {
+        void savePosition("auto", pageNumber, firstVisibleOffset());
+      }
+      window.clearTimeout(resumeFlashTimerRef.current);
+    };
+  }, [id, numPages, pageNumber, pageText, progressReady]);
+
+  useEffect(() => {
+    if (!pageText || resumeOffset === null) {
+      return;
+    }
+    const paragraphIndex = pageText.offsets.findIndex(
+      (start, index) =>
+        resumeOffset >= start &&
+        resumeOffset <= start + pageText.paragraphs[index].length,
+    );
+    if (paragraphIndex < 0) {
+      return;
+    }
+    const paragraph = textContainerRef.current?.children[paragraphIndex];
+    if (!(paragraph instanceof HTMLElement)) {
+      return;
+    }
+    paragraph.scrollIntoView({ block: "start" });
+    paragraph.classList.add("resume-line");
+    window.clearTimeout(resumeFlashTimerRef.current);
+    resumeFlashTimerRef.current = window.setTimeout(() => {
+      paragraph.classList.remove("resume-line");
+    }, 2500);
+    setResumeOffset(null);
+  }, [pageText, resumeOffset]);
 
   function handleSelection() {
     const selection = window.getSelection();
@@ -329,6 +413,16 @@ function ReaderPage() {
     }
   }
 
+  async function handleMarkAsStopped() {
+    if (!pendingSelection) {
+      return;
+    }
+    await savePosition("manual", pendingSelection.pageNumber, pendingSelection.range.start);
+    setResumeOffset(pendingSelection.range.start);
+    setPendingSelection(null);
+    window.getSelection()?.removeAllRanges();
+  }
+
   if (!id) {
     return <p className="p-6 text-danger">Missing book id.</p>;
   }
@@ -432,6 +526,13 @@ function ReaderPage() {
                 rows={2}
               />
               <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleMarkAsStopped()}
+                  className="mr-auto rounded border border-border px-2.5 py-1 text-sm text-ink"
+                >
+                  Parei aqui
+                </button>
                 <button
                   type="button"
                   onClick={handleCancelHighlight}

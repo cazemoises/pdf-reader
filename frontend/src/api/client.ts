@@ -57,11 +57,14 @@ export async function saveProgress(
   bookId: string,
   lastPage: number,
   percentage: number,
+  pageNumber = lastPage,
+  characterOffset = 0,
+  source: "auto" | "manual" = "auto",
 ): Promise<ReadingProgress> {
   const res = await fetch(`/books/${bookId}/progress`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ lastPage, percentage }),
+    body: JSON.stringify({ lastPage, percentage, pageNumber, characterOffset, source }),
   });
   return parseJSONOrThrow<ReadingProgress>(res);
 }

@@ -31,7 +31,7 @@ func NewReadingProgressRepository(db *sql.DB) *ReadingProgressRepository {
 // wrapping ErrReadingProgressNotFound if none exists.
 func (r *ReadingProgressRepository) GetByBookID(ctx context.Context, bookID string) (*domain.ReadingProgress, error) {
 	row := r.db.QueryRowContext(ctx,
-		`SELECT book_id, last_page, percentage, updated_at
+		`SELECT book_id, last_page, percentage, page_number, character_offset, source, updated_at
 		 FROM reading_progress WHERE book_id = $1`, bookID)
 
 	progress, err := scanReadingProgress(row)
@@ -47,13 +47,16 @@ func (r *ReadingProgressRepository) GetByBookID(ctx context.Context, bookID stri
 // Save creates or overwrites the ReadingProgress for its Book.
 func (r *ReadingProgressRepository) Save(ctx context.Context, progress *domain.ReadingProgress) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO reading_progress (book_id, last_page, percentage, updated_at)
-		 VALUES ($1, $2, $3, $4)
+		`INSERT INTO reading_progress (book_id, last_page, percentage, page_number, character_offset, source, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 ON CONFLICT (book_id) DO UPDATE
 		 SET last_page = EXCLUDED.last_page,
 		     percentage = EXCLUDED.percentage,
+		     page_number = CASE WHEN reading_progress.source = 'manual' AND EXCLUDED.source = 'auto' THEN reading_progress.page_number ELSE EXCLUDED.page_number END,
+		     character_offset = CASE WHEN reading_progress.source = 'manual' AND EXCLUDED.source = 'auto' THEN reading_progress.character_offset ELSE EXCLUDED.character_offset END,
+		     source = CASE WHEN reading_progress.source = 'manual' AND EXCLUDED.source = 'auto' THEN reading_progress.source ELSE EXCLUDED.source END,
 		     updated_at = EXCLUDED.updated_at`,
-		progress.BookID, progress.LastPage, progress.Percentage, progress.UpdatedAt,
+		progress.BookID, progress.LastPage, progress.Percentage, progress.PageNumber, progress.CharacterOffset, progress.Source, progress.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("postgres: saving reading progress: %w", err)
@@ -63,7 +66,7 @@ func (r *ReadingProgressRepository) Save(ctx context.Context, progress *domain.R
 
 func scanReadingProgress(s rowScanner) (*domain.ReadingProgress, error) {
 	var progress domain.ReadingProgress
-	if err := s.Scan(&progress.BookID, &progress.LastPage, &progress.Percentage, &progress.UpdatedAt); err != nil {
+	if err := s.Scan(&progress.BookID, &progress.LastPage, &progress.Percentage, &progress.PageNumber, &progress.CharacterOffset, &progress.Source, &progress.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &progress, nil

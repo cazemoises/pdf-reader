@@ -317,8 +317,11 @@ func (s *Server) handleGetProgress(w http.ResponseWriter, r *http.Request) {
 }
 
 type saveProgressRequest struct {
-	LastPage   int     `json:"lastPage"`
-	Percentage float64 `json:"percentage"`
+	LastPage        int                          `json:"lastPage"`
+	Percentage      float64                      `json:"percentage"`
+	PageNumber      int                          `json:"pageNumber"`
+	CharacterOffset int                          `json:"characterOffset"`
+	Source          domain.ReadingProgressSource `json:"source"`
 }
 
 func (s *Server) handleSaveProgress(w http.ResponseWriter, r *http.Request) {
@@ -336,7 +339,15 @@ func (s *Server) handleSaveProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	progress, err := domain.NewReadingProgress(bookID, req.LastPage, req.Percentage)
+	pageNumber := req.PageNumber
+	if pageNumber == 0 {
+		pageNumber = req.LastPage
+	}
+	source := req.Source
+	if source == "" {
+		source = domain.ReadingProgressSourceAuto
+	}
+	progress, err := domain.NewReadingProgressWithPosition(bookID, req.LastPage, req.Percentage, pageNumber, req.CharacterOffset, source)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

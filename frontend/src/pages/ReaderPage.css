@@ -21,6 +21,19 @@
   margin-bottom: 0;
 }
 
+.readingColumn p.resume-line {
+  animation: resume-line-flash 2.5s ease-out;
+}
+
+@keyframes resume-line-flash {
+  0% {
+    background-color: var(--color-accent-soft);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
 .readingColumn mark {
   background: none;
   border-radius: 2px;

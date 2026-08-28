@@ -13,6 +13,9 @@ export interface ReadingProgress {
   bookId: string;
   lastPage: number;
   percentage: number;
+  pageNumber: number;
+  characterOffset: number;
+  source: "auto" | "manual";
   updatedAt: string;
 }
 
