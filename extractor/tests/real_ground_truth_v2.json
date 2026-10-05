@@ -1,0 +1,45 @@
+{
+  "validation": "Minimal anchors manually checked against original renders on 2026-10-05, during evaluation after implementation freeze a08a995. These holdout checks did not tune the implementation. Partial properties, not full-page transcription or a fidelity percentage.",
+  "pages": [
+    {
+      "sha256": "25ca296fd415afa1e943e4daf89169fa92f63b774bda1ba2f371b5d9563375f0",
+      "page": 10,
+      "set": "holdout",
+      "selection_reason": "Outlined prose with important negation; tests partial recovery beyond development pages",
+      "manually_validated_anchors": ["O cozinheiro e o médico eram figuras", "não aceitar nada que não seja inteiramente cru"],
+      "expected_relationship": "Both anchors exist in this order in reader text. Passing does not establish full-page order or complete recovery."
+    },
+    {
+      "sha256": "25ca296fd415afa1e943e4daf89169fa92f63b774bda1ba2f371b5d9563375f0",
+      "page": 86,
+      "set": "holdout",
+      "selection_reason": "Late outlined prose detected but not recovered within the production budget",
+      "manually_validated_anchors": ["Não é sempre certo que os hábitos alimentares"],
+      "expected_relationship": "Visible sentence must exist in extracted reader text. Detection alone cannot pass this check."
+    },
+    {
+      "sha256": "0a3e5b35077a662f5eaccc9cbfa7e240ed4aa1ed66e20113284a236465726c60",
+      "page": 53,
+      "set": "holdout",
+      "selection_reason": "Justified native fragments adjoining an image; independent instance of baseline ordering failure",
+      "manually_validated_anchors": ["Apesar dessas características de comportamento, por vezes são desconfiados"],
+      "expected_relationship": "Anchor remains contiguous in the native paragraph, before indices de vingança. Image caption completeness is evaluated separately."
+    },
+    {
+      "sha256": "0a3e5b35077a662f5eaccc9cbfa7e240ed4aa1ed66e20113284a236465726c60",
+      "page": 56,
+      "set": "holdout",
+      "selection_reason": "Bright short caption in complex raster, absent despite healthy native prose",
+      "manually_validated_anchors": ["Omulu"],
+      "expected_relationship": "Caption must be recovered from the image region on this page; an occurrence elsewhere in the book does not qualify."
+    },
+    {
+      "sha256": "a9e8ae9b0409be6ebe04893cc4e4e307404121ae50fa9b6a480d7456687e7e8a",
+      "page": 18,
+      "set": "holdout",
+      "selection_reason": "Correct native control with headings and prose",
+      "manually_validated_anchors": ["Natureza e cultura não formam compartimentos puros", "A diferença social pode ser construída sobre uma base comum"],
+      "expected_relationship": "Headings precede their respective paragraphs; output must preserve the previous correct reading order."
+    }
+  ]
+}

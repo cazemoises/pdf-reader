@@ -1,0 +1,45 @@
+{
+  "scope": "Minimal anchors manually checked against original renders on 2026-10-05, during evaluation after implementation freeze a08a995. These holdout checks did not tune the implementation. Partial properties, not full-page transcription or a fidelity percentage.",
+  "checks": [
+    {
+      "sha256": "25ca296fd415afa1e943e4daf89169fa92f63b774bda1ba2f371b5d9563375f0",
+      "page": 10,
+      "before_anchor_check": false,
+      "after_anchor_check": true,
+      "manual_relationship_after": "pass",
+      "full_page_fidelity_verified": false
+    },
+    {
+      "sha256": "25ca296fd415afa1e943e4daf89169fa92f63b774bda1ba2f371b5d9563375f0",
+      "page": 86,
+      "before_anchor_check": false,
+      "after_anchor_check": false,
+      "manual_relationship_after": "fail",
+      "full_page_fidelity_verified": false
+    },
+    {
+      "sha256": "0a3e5b35077a662f5eaccc9cbfa7e240ed4aa1ed66e20113284a236465726c60",
+      "page": 53,
+      "before_anchor_check": false,
+      "after_anchor_check": true,
+      "manual_relationship_after": "pass",
+      "full_page_fidelity_verified": false
+    },
+    {
+      "sha256": "0a3e5b35077a662f5eaccc9cbfa7e240ed4aa1ed66e20113284a236465726c60",
+      "page": 56,
+      "before_anchor_check": false,
+      "after_anchor_check": false,
+      "manual_relationship_after": "fail",
+      "full_page_fidelity_verified": false
+    },
+    {
+      "sha256": "a9e8ae9b0409be6ebe04893cc4e4e307404121ae50fa9b6a480d7456687e7e8a",
+      "page": 18,
+      "before_anchor_check": true,
+      "after_anchor_check": true,
+      "manual_relationship_after": "pass",
+      "full_page_fidelity_verified": false
+    }
+  ]
+}
