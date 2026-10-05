@@ -24,7 +24,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: extraction-benchmark
-          path: artifacts/extraction-benchmark.json
+          path: |
+            artifacts/extraction-benchmark.json
+            artifacts/ocr-audit.json
+            artifacts/execution-resources.txt
+            artifacts/frontend-lint.txt
+            artifacts/runtime-security.json
+            artifacts/concurrency.json
   deploy:
     needs: validate
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'

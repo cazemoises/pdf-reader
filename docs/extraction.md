@@ -71,28 +71,31 @@ estratégias futuras sem exigir uma tabela por tipo de bloco.
 
 ## Escolha das estratégias
 
-Extração nativa sempre vem primeiro. Sem imagens e sem caracteres corrompidos,
-não se aplica OCR, mesmo com pouco texto. Imagens sem texto ou uma imagem que
-ocupa pelo menos metade da página pedem OCR parcial (texto nativo + regiões de
-imagem). Mais de 5% de caracteres substitutos/controles pede OCR completo.
-OCR só é aceito se não reduzir quantidade de caracteres nem piorar sua integridade.
-Falha/ausência do engine gera warning e preserva a extração nativa.
-Tabelas com linhas são detectadas em páginas nativas com pelo menos duas linhas
-horizontais/verticais e um separador interno; preenchimentos e bordas isoladas
-não disparam o parser caro. Essa condição decorre da geometria de uma grade
-com múltiplas células; tabelas de uma célula/linhas inclinadas não são detectadas;
-texto totalmente dentro da tabela é substituído pela matriz serializada.
+Extração nativa sempre vem primeiro. Área de imagem não decide OCR. A inspeção
+raster limitada procura fileiras de componentes semelhantes a glifos fora das
+linhas nativas utilizáveis. Essa evidência solicita OCR parcial; corrupção de
+mais de 5% dos caracteres não brancos solicita OCR completo, inclusive sem imagens.
+A decisão, motivos, execução, aceitação e contagens ficam em `page.ocr`.
+OCR parcial acrescenta apenas linhas OCR sem sobreposição com texto nativo;
+a camada nativa é preservada. Substituição de blocos corrompidos exige melhora de
+integridade e preservação das palavras nativas legíveis. Ausência/erro do engine
+preserva os blocos nativos e gera warning. Consulte [hardening.md](hardening.md)
+para critérios, falsos positivos/negativos e evidências adversariais.
 
-Os números são **política heurística inicial**, não limites aprendidos nem garantia
-de qualidade. 50% distingue imagem dominante de pequenos logos; 5% tolera
-artefatos pontuais e aciona alternativa para corrupção significativa. Margens
-são 6% superior/inferior e exigem repetição em pelo menos três páginas e metade
-do documento. Texto marginal é conservado no JSON; omitido somente no texto
-principal. Só números inteiros são normalizados para repetição de paginação.
-Tudo está centralizado em Settings e testável por `dataclasses.replace`.
-`PDF_OCR_ENABLED` e `PDF_OCR_LANGUAGE` são configuráveis pelo Compose.
-150 DPI e 20 milhões de pixels limitam custo de rasterização; idiomas padrão
-são português e inglês. Textos pequenos podem precisar de maior resolução futura.
+Tabelas com grade vetorial usam o extrator existente. A substituição só acontece
+quando as células cobrem as palavras das linhas nativas contidas na tabela;
+linhas externas de um bloco que cruza a grade são preservadas. Tabelas sem linhas
+e escaneadas continuam sem reconhecimento semântico garantido.
+
+Margens repetidas são candidatas no JSON, sem remoção automática da prosa:
+repetição e posição não distinguem cabeçalho de frase legítima. A janela de 6%,
+mínimo três páginas e metade do documento só produzem anotação. Limites e
+heurísticas estão centralizados em Settings e são substituíveis nos testes.
+A inspeção usa lado máximo 600 pixels, até 32 imagens, no máximo 50.000 componentes;
+fileiras de quatro componentes reduzem confusão com ícones, mas não provam texto.
+OCR mantém 150 DPI, por+eng, máximo 20 milhões de pixels de renderização;
+imagens-fonte maiores que 40 milhões de pixels são rejeitadas antes de decode.
+`PDF_OCR_ENABLED` e `PDF_OCR_LANGUAGE` continuam configuráveis pelo Compose.
 
 Normalização usa NFC e remove soft hyphens; hífens ASCII são conservados.
 A heurística anterior do frontend para hífen final permanece por compatibilidade
@@ -107,8 +110,9 @@ null porque o TextPage não expõe confiança calibrada; não inventamos um valo
 O benchmark mede cobertura de frases conhecidas e ordem contra ground truth,
 caracteres, estratégia/fallback/warnings por página, tempo real e CPU por documento
 e RSS máximo em processos separados. A geração das imagens sintéticas fica fora
-do processo medido. Uma execução é um diagnóstico aproximado, não estimativa
-estatística; repetir sob mesma carga para comparar produção. Tempo HTTP/startup
+do processo medido. O benchmark executa um warm-up e cinco amostras por estratégia, reportando
+mediana, mínimo/máximo, CPU, RSS e páginas/s. RSS é pico do processo, incluindo
+warm-up e caches; não se compara diretamente com uma execução fria. Tempo HTTP/startup
 e transporte não fazem parte do benchmark do parser.
 
 ```sh
@@ -138,8 +142,11 @@ pelo cliente; contexto gerencia cleanup. Cancelamento HTTP não libera o slot
 antes de o subprocesso terminar. Não há subprocessos shell nem caminhos de PDF
 fornecidos pelo usuário. Erros públicos são genéricos, 413/422/503/504.
 Go limita upload, limpa multipart temporário e usa timeout HTTP de 100 segundos.
+O container executa como UID 10001; admissão ocorre antes do multipart e upload
+tem prazo de 90 segundos. Go admite uma ingestão por instância antes de ler o corpo
+e persiste `failed` sob contexto independente e limitado após cancelamento.
 Logs registram hash curto do documento, página, estratégia, duração, caracteres,
-score e warnings; não registram texto, filename ou exceções nativas detalhadas.
+sinais de qualidade, decisão/motivos de OCR e warnings; não registram texto, filename ou exceções nativas detalhadas.
 
 Compose limita extractor a 2 GiB, 2 CPUs, 64 processos, root filesystem readonly,
 /tmp de 96 MiB, sem capabilities e sem elevar privilégios. Isso limita impacto
@@ -191,8 +198,8 @@ arbitrário no runner: o trigger continua restrito a pushes internos e dispatch.
 
 1. Adicionar ground truth de documentos reais autorizados, com anotação de ordem
    e células; calibrar decisões OCR/margens e orçamento contra PDFs da aplicação.
-2. Melhorar detecção de imagem ilustrativa versus texto rasterizado, corrupção
-   de fontes com caracteres válidos e OCR de regiões pequenas em PDFs híbridos.
+2. Calibrar inspeção raster para imagens de baixo contraste/invertidas, texto muito
+   pequeno, fotos e fontes corrompidas que produzam caracteres aparentemente válidos.
 3. Reconhecer títulos/listas/captions/footnotes com dados de fontes e validar
    visualmente; suportar tabelas sem linhas/escaneadas e renderização semântica na UI.
 4. Melhorar layouts com colunas intercaladas, RTL, texto diagonal e parágrafos
@@ -200,30 +207,8 @@ arbitrário no runner: o trigger continua restrito a pushes internos e dispatch.
 5. Considerar fila com concorrência limitada e retry para 503, operações transacionais
    de ingestão e isolamento nativo mais forte, conforme demanda real.
 
-## Evidência local (amd64)
+## Evidência da rodada de hardening
 
-Validação completa em Docker: 24 testes Python, suíte Go com PostgreSQL real,
-go vet, quatro uploads de ponta a ponta (colunas/tabela/scan/híbrido), build
-frontend e Compose válidos. O teste antigo da extração e respostas legadas Go
-continuam passando. Há um warning de depreciação no TestClient/httpx, sem falha.
-
-No corpus de 10 documentos/14 páginas, toda frase esperada é recuperada em ordem.
-Scan passa de cobertura 0% a 100%; híbrido de 50% a 100%. O baseline tem ordem
-correta em tabela/acentos, mas falha nos demais documentos sintéticos desenhados
-fora de ordem. Tabela conserva matriz 2x2 sem duplicação, e margens ficam fora da
-prosa sem serem perdidas no JSON. OCR é solicitado somente em scan/híbrido.
-
-PDF existente de 269 páginas, container com 2 CPUs/2 GiB:
-
-| Medida | Código anterior | Novo pipeline |
-|---|---:|---:|
-| Tempo do parser | 0,312 s | 1,264 s |
-| CPU | 0,311 s | 1,202 s |
-| RSS máximo | 59,0 MiB | 90,3 MiB |
-| Páginas pedindo fallback | 0 | 4 (1, 2, 4, 5) |
-
-Nenhuma página perdeu mais de 20% dos caracteres do baseline, mas isso não prova
-qualidade semântica nem ausência de erros menores. A primeira versão rodava
-find_tables em 268 páginas e demorava 12,23 s; profiling mostrou esse estágio
-como custo dominante. O filtro de grades resolveu essa regressão de desempenho.
-Medições são uma execução por estratégia, sem inferência estatística.
+Resultados, regressões reproduzidas, benchmarks repetidos e limites estão em
+[hardening.md](hardening.md). Os artefatos de cada execução do workflow incluem
+benchmark, auditoria OCR por fixture/página, recursos, concorrência e segurança.
