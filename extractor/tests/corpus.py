@@ -46,6 +46,7 @@ def corpus():
                     if kind == 'margins':
                         page.insert_text((50, 25), 'Repeated header')
                         page.insert_text((50, 780), str(n + 1))
+                        texts = ['Repeated header']+texts+[str(n+1)]
                     if kind == 'rotated':
                         page.set_rotation(90)
                 expected.append(texts)

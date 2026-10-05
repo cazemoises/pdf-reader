@@ -14,8 +14,9 @@ def test_ground_truth_in_visual_order(kind):
     result = extract_document(data, replace(Settings(), ocr_enabled=False))
     for page, truth in zip(result['pages'], expected):
         text = '\n'.join(b['text'] for b in page['blocks'] if b['type'] not in ('header', 'footer'))
-        positions = [text.index(t) for t in truth]
-        assert positions == sorted(positions)
+        expected_lines = ['Name | Value', 'Alpha | 42'] if kind == 'table' else truth
+        assert text.splitlines() == expected_lines
+        assert len(page['blocks']) == (1 if kind == 'table' else len(truth))
         assert page['quality']['invalid_characters'] == 0
         assert not page['fallback_requested']
 
@@ -36,8 +37,8 @@ def test_table_cells_preserved_without_duplicate_prose():
 def test_repeated_margins_retained_with_roles():
     pages = extract_document(corpus()['margins'][0])['pages']
     for page in pages:
-        assert any(b['type'] == 'header' for b in page['blocks'])
-        assert any(b['type'] == 'footer' for b in page['blocks'])
+        assert any(b.get('margin_candidate') == 'header' for b in page['blocks'])
+        assert any(b.get('margin_candidate') == 'footer' for b in page['blocks'])
 
 
 @pytest.mark.parametrize('kind', ['scan', 'hybrid'])
@@ -49,8 +50,8 @@ def test_ocr_only_when_required(kind):
     if 'ocr_unavailable_or_failed' in page['warnings']:
         pytest.fail('OCR dependency missing: run tests in Docker test target')
     text = '\n'.join(b['text'] for b in page['blocks'])
-    for phrase in expected[0]:
-        assert phrase in text
+    assert text.splitlines() == expected[0]
+    assert all(text.count(phrase) == 1 for phrase in expected[0])
     assert page['strategy'] == 'ocr-partial'
 
 

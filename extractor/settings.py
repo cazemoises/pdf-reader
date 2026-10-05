@@ -11,11 +11,16 @@ class Settings:
     timeout_seconds: int = 90
     memory_bytes: int = 1536 * 1024 * 1024
     max_page_pixels: int = 20_000_000
+    max_source_image_pixels: int = 40_000_000
     max_blocks: int = 20_000
     ocr_dpi: int = 150
     ocr_language: str = 'por+eng'
     ocr_enabled: bool = True
-    image_area_trigger: float = 0.5
+    inspection_max_dimension: int = 600
+    inspection_gray_threshold: int = 223  # Includes light-gray text; white background remains excluded.
+    max_inspected_images: int = 32
+    min_text_components: int = 4
+    max_inspection_components: int = 50_000
     invalid_ratio_trigger: float = 0.05
     margin_fraction: float = 0.06
 

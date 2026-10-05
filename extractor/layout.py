@@ -2,9 +2,10 @@
 import unicodedata
 
 
-def normalized(text):
+def normalized(text, preserve_soft_hyphens=False):
     # Keep ordinary hyphens: distinguishing line-wrap hyphens from compounds needs language context.
-    return unicodedata.normalize('NFC', text).replace('\u00ad\n', '').replace('\u00ad', '').strip()
+    text = unicodedata.normalize('NFC', text).replace('\x00', '\ufffd').strip()
+    return text if preserve_soft_hyphens else text.replace('\u00ad\n', '').replace('\u00ad', '')
 
 
 def bbox(rect):
@@ -31,7 +32,7 @@ def reading_order(blocks, depth=0):
                 gaps.append((start-end, i))
             end = max(end, rect(ordered[i])[axis+2])
         if gaps:
-            _, split = max(gaps)
+            _, split = max(gaps) if axis == 0 else gaps[0]
             return reading_order(ordered[:split], depth+1) + reading_order(ordered[split:], depth+1)
     return sorted(blocks, key=lambda b: (rect(b)[1], rect(b)[0]))
 
@@ -51,4 +52,7 @@ def mark_margins(pages, fraction):
     for (role, _), entries in occurrences.items():
         if len({n for n, _ in entries}) >= max(3, (len(pages)+1)//2):
             for _, block in entries:
-                block['type'] = role
+                if block['type'] == 'paragraph':
+                    # Position+repetition cannot establish semantics; preserve compatible content.
+                    block['margin_candidate'] = role
+                    block['exclude_from_text'] = False
