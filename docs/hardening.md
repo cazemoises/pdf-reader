@@ -99,3 +99,19 @@ Host amd64, 12 CPUs/15.6GiB; container 2CPU/2GiB. Um warm-up, cinco execuções;
 Página 5 inicialmente regressou com corte de intensidade escura; inspeção visual e fixture cinza reproduziram o problema. O corte centralizado de cinza 223 recuperou seus 83 caracteres novamente. Páginas 2/4 continuaram vazias em ambas as versões, com warning. Página 136 possui tabela de associações rasterizada pequena acima da prosa: inspeção visual confirmou conteúdo adicional; extração preservou 1922 caracteres nativos e acrescentou 60. Isso não constitui ground truth do restante do documento.
 
 O custo final cresce cerca de 15% em wall e 17% em CPU versus primeira evolução, RSS cerca de 1%; inclui OCR adicional útil, inspeção e salvaguardas. Profiling (com overhead, portanto fora da tabela) aponta avaliação de caracteres e extração nativa como principais custos cumulativos, seguidos pela decisão raster/OCR. Não foi feita otimização prematura. O algoritmo legado é rápido porque não recupera scan/estrutura.
+
+### Corpus por categoria (local, cinco execuções após warm-up)
+
+| Categoria / estratégia | Wall mediana (min..max) | CPU mediana | RSS pico | Páginas/s | Páginas OCR |
+|---|---:|---:|---:|---:|---|
+| Texto / legado | 0.0006s (0.0006..0.0007) | 0.0006s | 89.2MiB | 1575 | 0 |
+| Texto / primeira evolução | 0.0009s (0.0008..0.0011) | 0.0009s | 89.2MiB | 1163 | 0 |
+| Texto / hardening | 0.0009s (0.0008..0.0010) | 0.0009s | 89.2MiB | 1119 | 0 |
+| Scan / legado | 0.0011s (0.0010..0.0018) | 0.0011s | 89.2MiB | 949 | 0 (conteúdo ausente) |
+| Scan / primeira evolução | 0.1101s (0.1066..0.1280) | 0.0965s | 185.8MiB | 9.1 | 1 |
+| Scan / hardening | 0.1205s (0.1186..0.1319) | 0.1092s | 215.2MiB | 8.3 | 1 |
+| Híbrido / legado | 0.0014s (0.0013..0.0022) | 0.0014s | 89.2MiB | 696 | 0 (metade ausente) |
+| Híbrido / primeira evolução | 0.1178s (0.1114..0.1229) | 0.1009s | 185.8MiB | 8.5 | 1 |
+| Híbrido / hardening | 0.1230s (0.1178..0.1305) | 0.1078s | 216.1MiB | 8.1 | 1 |
+
+As páginas textuais mínimas têm duração submilissegundo e dispersão relativa grande; servem como check de ausência de OCR, não como microbenchmark para otimização. RSS dos processos inclui carregamento dos geradores/fixtures e warm-up, além do pipeline. Nos sintéticos OCR há aumento aproximado de 29–30MiB versus primeira evolução; orçamento do container continua 2GiB.
