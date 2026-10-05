@@ -1,42 +1,70 @@
-import pymupdf
-from fastapi import FastAPI, UploadFile
+import asyncio
+import json
+import logging
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import threading
+from fastapi import FastAPI, HTTPException, UploadFile
+from settings import Settings
+from limits import UploadLimit
 
-app = FastAPI(title="pdf-reader extractor")
+app = FastAPI(title='pdf-reader extractor')
+settings = Settings.from_env()
+app.add_middleware(UploadLimit, max_bytes=settings.max_bytes + 1024*1024)
+# A single disposable parser per service instance. Reject contention rather than queue uploads in RAM.
+slot = threading.BoundedSemaphore(1)
+logger = logging.getLogger('pdf_reader.extraction')
 
 
-@app.get("/health")
+@app.get('/health')
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {'status': 'ok'}
 
 
-@app.post("/extract")
+def isolated_extract(data):
+    worker = str(Path(__file__).with_name('worker.py'))
+    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+        try:
+            completed = subprocess.run([sys.executable, worker], input=data, stdout=output, stderr=errors,
+                                       timeout=settings.timeout_seconds, check=False)
+        except subprocess.TimeoutExpired:
+            raise HTTPException(504, 'PDF processing timed out')
+        output.seek(0)
+        payload = output.read(settings.max_output_bytes + 1)
+        if len(payload) > settings.max_output_bytes:
+            raise HTTPException(422, 'PDF output limit exceeded')
+        if completed.returncode != 0:
+            logger.warning('stage=worker exit_code=%s', completed.returncode)
+            raise HTTPException(422, 'Invalid PDF or processing budget exceeded')
+        errors.seek(0)
+        # Worker only logs metadata, never extracted text, filename or parser exception details.
+        for line in errors.read(64*1024).decode(errors='replace').splitlines():
+            if line.startswith('INFO:pdf_reader.extraction:'):
+                logger.info('stage=worker %s', line)
+        try:
+            return json.loads(payload)
+        except ValueError:
+            raise HTTPException(422, 'PDF processing failed')
+
+
+@app.post('/extract')
 async def extract(file: UploadFile) -> dict:
-    pdf_bytes = await file.read()
-    doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-
-    pages = []
-    for page_number, page in enumerate(doc, start=1):
-        blocks = []
-        for x0, y0, x1, y1, text, *_ in page.get_text("blocks"):
-            blocks.append(
-                {
-                    "text": text.strip(),
-                    "bbox": {
-                        "x": x0,
-                        "y": y0,
-                        "width": x1 - x0,
-                        "height": y1 - y0,
-                    },
-                }
-            )
-        pages.append(
-            {
-                "page_number": page_number,
-                "width": page.rect.width,
-                "height": page.rect.height,
-                "blocks": blocks,
-            }
-        )
-
-    doc.close()
-    return {"pages": pages}
+    if not slot.acquire(blocking=False):
+        await file.close()
+        raise HTTPException(503, 'Extractor busy; retry later')
+    task = None
+    try:
+        data = await file.read(settings.max_bytes + 1)
+        if len(data) > settings.max_bytes:
+            raise HTTPException(413, 'PDF file too large')
+        task = asyncio.create_task(asyncio.to_thread(isolated_extract, data))
+        # Cancellation must not release the slot while the native process is still running.
+        return await asyncio.shield(task)
+    finally:
+        await file.close()
+        if task is not None and not task.done():
+            task.add_done_callback(lambda completed: (completed.exception() if not completed.cancelled() else None, slot.release()))
+        else:
+            slot.release()

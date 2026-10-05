@@ -12,3 +12,8 @@ frontend/node_modules/
 frontend/dist/
 
 .env
+
+artifacts/
+extractor/.pytest_cache/
+extractor/tests/__pycache__/
+extractor/tools/__pycache__/
