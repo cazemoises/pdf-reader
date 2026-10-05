@@ -2,10 +2,32 @@ name: Deploy pdf-reader
 
 on:
   push:
-    branches: [main]
+    branches: [main, "feat/structured-extraction"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pdf-reader-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  validate:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests, integration, OCR corpus and builds
+        run: ./scripts/validate.sh
+      - name: Extraction benchmark
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extraction-benchmark
+          path: artifacts/extraction-benchmark.json
   deploy:
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: [self-hosted, linux]
     # Runs on the VM itself via the self-hosted runner (see
     # ../orchestrator/deploy/setup-runner.md) - no inbound SSH needed.

@@ -1,80 +1,29 @@
-# pdf-reader
+# PDF-Reader
 
-Aplicação para leitura/extração de conteúdo de PDFs. Este repositório está,
-por enquanto, **apenas com a estrutura de pastas e configs base** — a
-implementação real é feita depois pelo [orchestrator](../orchestrator),
-rodando de forma autônoma contra `backend/` (ver
-`ORCH_REPO_DIR=/caminho/pdf-reader/backend` no ambiente do orchestrator).
+Leitor de PDFs com React/TypeScript, backend Go com arquitetura hexagonal,
+PostgreSQL e serviço Python/FastAPI/PyMuPDF para extração e OCR seletivo.
+Uploads são processados sincronamente; páginas, notas, highlights e posição
+de leitura são persistidos. PDFs originais ficam em um volume do backend.
 
-## Estrutura
-
-```
-backend/      # Go, module "pdf-reader/backend" — apenas internal/domain/
-              # e internal/ports/ com um doc.go de propósito, sem código
-              # de implementação ainda.
-extractor/    # Python/FastAPI, extração de PDF via PyMuPDF — tem um
-              # health check mínimo funcional (GET /health).
-frontend/     # Vite + React + TypeScript + Tailwind — só configs e o
-              # boilerplate padrão do scaffold, sem `npm install` rodado
-              # (não há node_modules/ nem package-lock.json commitados).
-docker-compose.yml   # Postgres + backend + extractor + frontend
-```
-
-## Estado atual de cada serviço
-
-| Serviço | Builda hoje? | Observação |
-|---|---|---|
-| `extractor` | Sim | `GET /health` já funciona. |
-| `frontend` | Não (ainda) | `npm ci` no Dockerfile precisa de `package-lock.json`, que só existe depois de um `npm install` real (não rodado de propósito nesta etapa). |
-| `backend` | Não (ainda) | Não existe `cmd/server/main.go` ainda — só `internal/domain` e `internal/ports` vazios. `docker build` falha até esse entrypoint existir. |
-
-Isso é esperado: `docker-compose.yml` já está com toda a topologia,
-variáveis de ambiente, healthchecks e rede interna definidos, para
-funcionar sem alterações assim que o orchestrator preencher `backend/` e
-alguém rodar `npm install` uma vez em `frontend/`.
-
-## Rodando localmente (depois que backend/frontend tiverem código real)
-
-```bash
+```sh
 docker compose up -d --build
 ```
 
-## Backend
+A rede externa `shared-services` deve existir no ambiente de deploy existente.
+Variáveis opcionais e portas: [.env.example](.env.example).
+Frontend: 8081; backend: 8080; extractor: 8000. PostgreSQL não publica porta.
+O backend aplica automaticamente as migrações embutidas.
 
-Módulo Go independente (`go.mod` próprio, não faz parte do módulo
-`orchestrator`). Arquitetura hexagonal: `internal/domain` para os tipos
-centrais, `internal/ports` para as interfaces; `internal/adapters` e
-`cmd/server` serão criados pelo Dev agent conforme o backlog avança.
+A extração preserva blocos/linhas, coordenadas, tabelas, imagens como metadados,
+estratégias e diagnósticos, mantendo texto compatível para o leitor.
+Detalhes, limites, benchmark, corpus e rollback:
+[documentação de extração](docs/extraction.md).
 
-## Extractor
-
-Serviço Python separado (FastAPI + PyMuPDF) para extração de conteúdo de
-PDF, chamado pelo backend via HTTP (`EXTRACTOR_URL`, ver
-`docker-compose.yml`).
-
-```bash
-cd extractor
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload
+```sh
+./scripts/validate.sh
 ```
 
-## Frontend
-
-Vite + React + TypeScript + Tailwind. Configs criadas manualmente
-(`package.json`, `vite.config.ts`, `tsconfig.json`, `tailwind.config.js`,
-etc) — ainda sem `npm install` rodado. Para começar a desenvolver:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-## CI/CD
-
-Push em `main` dispara `.github/workflows/deploy.yml`, que roda no
-self-hosted runner da VM (ver `../orchestrator/deploy/setup-runner.md` para
-o guia de instalação do runner — o mesmo processo se aplica aqui, com um
-runner registrado separadamente contra este repo) e builda/sobe os três
-serviços via `docker compose up -d --build`.
+Validação isolada em Docker: Python/OCR, Go e PostgreSQL real, ingestão HTTP,
+benchmark, build do frontend e configuração Compose. O workflow existente roda
+no self-hosted runner Linux; deploy de main exige aprovação desses checks.
+Não é necessário instalar Tesseract ou bibliotecas Python manualmente na VM.
