@@ -11,6 +11,9 @@ type PageRepository interface {
 	// Create stores a new Page.
 	Create(ctx context.Context, page *domain.Page) error
 
+	// FindByBookIDAndNumber loads one page without reading the entire document layout.
+	FindByBookIDAndNumber(ctx context.Context, bookID string, number int) (*domain.Page, error)
+
 	// ListByBookID returns all Pages belonging to the given Book, ordered by
 	// page number.
 	ListByBookID(ctx context.Context, bookID string) ([]*domain.Page, error)

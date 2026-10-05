@@ -8,9 +8,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"pdf-reader/backend/internal/domain"
 	"pdf-reader/backend/internal/ports"
@@ -27,6 +29,7 @@ type Server struct {
 	extractor     ports.TextExtractor
 	storage       ports.FileStorage
 	mux           *http.ServeMux
+	uploadSlot    chan struct{}
 }
 
 // NewServer builds a Server wired to the given ports and registers its
@@ -41,6 +44,7 @@ func NewServer(
 	storage ports.FileStorage,
 ) *Server {
 	s := &Server{
+		uploadSlot:    make(chan struct{}, 1),
 		bookRepo:      bookRepo,
 		pageRepo:      pageRepo,
 		highlightRepo: highlightRepo,
@@ -74,10 +78,30 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateBook(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	select {
+	case s.uploadSlot <- struct{}{}:
+		defer func() { <-s.uploadSlot }()
+	default:
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "PDF ingestion busy; retry later", http.StatusServiceUnavailable)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 200*time.Second)
+	defer cancel()
+	r.Body = http.MaxBytesReader(w, r.Body, 33*1024*1024)
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
+		var sizeError *http.MaxBytesError
+		if errors.As(err, &sizeError) {
+			http.Error(w, "PDF upload too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "missing file field", http.StatusBadRequest)
 		return
 	}
@@ -115,6 +139,7 @@ func (s *Server) handleCreateBook(w http.ResponseWriter, r *http.Request) {
 
 	for _, page := range pages {
 		if err := s.pageRepo.Create(ctx, page); err != nil {
+			s.markFailed(ctx, book)
 			http.Error(w, "storing page", http.StatusInternalServerError)
 			return
 		}
@@ -125,6 +150,7 @@ func (s *Server) handleCreateBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.bookRepo.Update(ctx, book); err != nil {
+		s.markFailed(ctx, book)
 		http.Error(w, "updating book", http.StatusInternalServerError)
 		return
 	}
@@ -181,20 +207,12 @@ func (s *Server) handleGetPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pages, err := s.pageRepo.ListByBookID(r.Context(), r.PathValue("id"))
+	page, err := s.pageRepo.FindByBookIDAndNumber(r.Context(), r.PathValue("id"), number)
 	if err != nil {
-		http.Error(w, "book not found", http.StatusNotFound)
+		http.Error(w, "page not found", http.StatusNotFound)
 		return
 	}
-
-	for _, page := range pages {
-		if page.Number == number {
-			writeJSON(w, http.StatusOK, page)
-			return
-		}
-	}
-
-	http.Error(w, "page not found", http.StatusNotFound)
+	writeJSON(w, http.StatusOK, page)
 }
 
 type createHighlightRequest struct {
@@ -387,7 +405,9 @@ func (s *Server) extractPages(ctx context.Context, book *domain.Book) ([]*domain
 
 func (s *Server) markFailed(ctx context.Context, book *domain.Book) {
 	_ = book.UpdateStatus(domain.BookStatusFailed)
-	_ = s.bookRepo.Update(ctx, book)
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	_ = s.bookRepo.Update(cleanupCtx, book)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

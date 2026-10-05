@@ -10,13 +10,13 @@
 //     override to it, or run a standalone container with matching
 //     credentials:
 //
-//       docker run --rm -d --name pdfreader-postgres \
-//         -e POSTGRES_USER=pdfreader -e POSTGRES_PASSWORD=pdfreader -e POSTGRES_DB=pdfreader \
-//         -p 5432:5432 postgres:16-alpine
+//     docker run --rm -d --name pdfreader-postgres \
+//     -e POSTGRES_USER=pdfreader -e POSTGRES_PASSWORD=pdfreader -e POSTGRES_DB=pdfreader \
+//     -p 5432:5432 postgres:16-alpine
 //
 //  2. Export DATABASE_URL pointing at it, e.g.:
 //
-//       export DATABASE_URL="postgres://pdfreader:pdfreader@localhost:5432/pdfreader?sslmode=disable"
+//     export DATABASE_URL="postgres://pdfreader:pdfreader@localhost:5432/pdfreader?sslmode=disable"
 //
 //  3. Run: go test ./internal/adapters/httpserver/...
 //
@@ -38,7 +38,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -48,6 +47,7 @@ import (
 	"pdf-reader/backend/internal/adapters/httpextractor"
 	"pdf-reader/backend/internal/adapters/httpserver"
 	"pdf-reader/backend/internal/adapters/postgres"
+ "pdf-reader/backend/migrations"
 	"pdf-reader/backend/internal/domain"
 	"pdf-reader/backend/internal/ports"
 )
@@ -102,15 +102,9 @@ func openTestDBForServer(t *testing.T) *sql.DB {
 	}
 	lockSharedTestDB(t, ctx, db)
 
-	for _, migration := range []string{"0001_create_books.sql", "0002_create_pages.sql", "0003_create_highlights.sql", "0004_create_notes.sql", "0005_create_reading_progress.sql", "0006_highlight_char_offsets.sql"} {
-		schema, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", migration))
-		if err != nil {
-			t.Fatalf("reading migration file %s: %v", migration, err)
-		}
-		if _, err := db.ExecContext(ctx, string(schema)); err != nil {
-			t.Fatalf("applying migration %s: %v", migration, err)
-		}
-	}
+	if err := postgres.ApplyMigrations(ctx, db, migrations.FS); err != nil {
+  t.Fatalf("applying migrations: %v", err)
+ }
 
 	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE notes CASCADE"); err != nil {
 		t.Fatalf("truncating notes table: %v", err)

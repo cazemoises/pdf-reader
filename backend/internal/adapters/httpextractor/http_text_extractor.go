@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"time"
 
 	"pdf-reader/backend/internal/domain"
 )
@@ -23,16 +24,17 @@ type HTTPTextExtractor struct {
 }
 
 // NewHTTPTextExtractor creates an HTTPTextExtractor targeting baseURL. If
-// client is nil, http.DefaultClient is used.
+// client is nil, a client with a bounded processing timeout is used.
 func NewHTTPTextExtractor(baseURL string, client *http.Client) *HTTPTextExtractor {
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{Timeout: 100 * time.Second}
 	}
 	return &HTTPTextExtractor{baseURL: baseURL, client: client}
 }
 
 type extractResponse struct {
-	Pages []extractPage `json:"pages"`
+	SchemaVersion int               `json:"schema_version"`
+	Pages         []json.RawMessage `json:"pages"`
 }
 
 type extractPage struct {
@@ -43,7 +45,9 @@ type extractPage struct {
 }
 
 type extractBlock struct {
-	Text string `json:"text"`
+	Text            string `json:"text"`
+	Type            string `json:"type"`
+	ExcludeFromText *bool  `json:"exclude_from_text"`
 }
 
 // Extract sends source's content to the extractor service and converts the
@@ -66,13 +70,17 @@ func (e *HTTPTextExtractor) Extract(ctx context.Context, bookID string, source i
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 32*1024*1024+1))
 	if err != nil {
 		return nil, fmt.Errorf("httpextractor: reading response body: %w", err)
 	}
 
+	if len(respBody) > 32*1024*1024 {
+		return nil, fmt.Errorf("httpextractor: response size limit exceeded")
+	}
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("httpextractor: extractor service returned status %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("httpextractor: extractor service returned status %d", resp.StatusCode)
 	}
 
 	var parsed extractResponse
@@ -81,16 +89,37 @@ func (e *HTTPTextExtractor) Extract(ctx context.Context, bookID string, source i
 	}
 
 	pages := make([]*domain.Page, 0, len(parsed.Pages))
-	for _, p := range parsed.Pages {
+	for _, raw := range parsed.Pages {
+		var p extractPage
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return nil, fmt.Errorf("httpextractor: invalid page: %w", err)
+		}
 		texts := make([]string, 0, len(p.Blocks))
 		for _, b := range p.Blocks {
-			texts = append(texts, b.Text)
+			exclude := b.Type == "header" || b.Type == "footer"
+			if b.ExcludeFromText != nil {
+				exclude = *b.ExcludeFromText
+			}
+			if !exclude {
+				text := b.Text
+				if parsed.SchemaVersion >= 2 && b.Type == "table" {
+					text = strings.ReplaceAll(text, "\n", "\n\n")
+				}
+				texts = append(texts, text)
+			}
 		}
-		text := strings.Join(texts, "\n")
+		separator := "\n"
+		if parsed.SchemaVersion >= 2 {
+			separator = "\n\n"
+		}
+		text := strings.Join(texts, separator)
 
 		page, err := domain.NewPage(bookID, p.PageNumber, text, p.Width, p.Height)
 		if err != nil {
 			return nil, fmt.Errorf("httpextractor: building domain page %d: %w", p.PageNumber, err)
+		}
+		if parsed.SchemaVersion >= 2 {
+			page.Extraction = raw
 		}
 		pages = append(pages, page)
 	}
@@ -106,8 +135,12 @@ func buildMultipartBody(source io.Reader) (*bytes.Buffer, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	if _, err := io.Copy(part, source); err != nil {
+	written, err := io.Copy(part, io.LimitReader(source, 32*1024*1024+1))
+	if err != nil {
 		return nil, "", err
+	}
+	if written > 32*1024*1024 {
+		return nil, "", fmt.Errorf("PDF size limit exceeded")
 	}
 	if err := writer.Close(); err != nil {
 		return nil, "", err

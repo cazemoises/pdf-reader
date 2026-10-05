@@ -1,6 +1,9 @@
 package domain
 
-import "errors"
+import (
+	"encoding/json"
+	"errors"
+)
 
 var (
 	ErrPageBookIDRequired    = errors.New("domain: page book id is required")
@@ -11,11 +14,13 @@ var (
 // Page is a single extracted page of a Book, including its text and the
 // physical dimensions needed to later map highlight coordinates.
 type Page struct {
-	BookID string  `json:"bookId"`
-	Number int     `json:"number"`
-	Text   string  `json:"text"`
-	Width  float64 `json:"width"`
-	Height float64 `json:"height"`
+	// Extraction retains the versioned extractor page without coupling domain logic to strategy-specific fields.
+	Extraction json.RawMessage `json:"extraction,omitempty"`
+	BookID     string          `json:"bookId"`
+	Number     int             `json:"number"`
+	Text       string          `json:"text"`
+	Width      float64         `json:"width"`
+	Height     float64         `json:"height"`
 }
 
 // NewPage creates a Page for the given book at the given 1-based page number.
