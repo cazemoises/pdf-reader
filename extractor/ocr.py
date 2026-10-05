@@ -73,6 +73,12 @@ def image_text_evidence(page, images, native, settings):
                     masks.append((int(r.x0*scale)-pix.x-1, int(r.y0*scale)-pix.y-1,
                                   int(r.x1*scale)-pix.x+2, int(r.y1*scale)-pix.y+2))
         components = glyph_components(pix, masks, settings.max_inspection_components, settings.inspection_gray_threshold)
+        # Complex uncovered ink is uncertainty, not sufficient evidence for OCR.
+        # It includes connected/cursive labels, but also photographs and drawings.
+        shades = {value//32 for value in pix.samples}
+        if len(shades) >= 4 and any(b[3]-b[1] > 60 or b[2]-b[0] > 2*(b[3]-b[1]) for b in components):
+            detected.append({'bbox': image['bbox'], 'text_evidence': False,
+                             'reason': 'complex_uncovered_raster_ink'})
         glyphs = [b for b in components if 3 <= b[3]-b[1] <= 60 and 1 <= b[2]-b[0] <= 2*(b[3]-b[1])]
         rows = []
         for box in sorted(glyphs, key=lambda b: (b[1], b[0])):
@@ -88,14 +94,14 @@ def image_text_evidence(page, images, native, settings):
             for a, b in zip(row, row[1:]):
                 run = run+1 if b[0]-a[2] <= 3*max(a[3]-a[1], b[3]-b[1]) else 1
                 if run >= settings.min_text_components:
-                    detected.append({'bbox': image['bbox'], 'aligned_components': run})
+                    detected.append({'bbox': image['bbox'], 'aligned_components': run, 'text_evidence': True})
                     break
-            if detected and detected[-1]['bbox'] == image['bbox']:
+            if detected and detected[-1]['bbox'] == image['bbox'] and detected[-1].get('text_evidence', True):
                 break
     return detected
 
 
-def decide(page, images, native, settings):
+def decide(page, images, native, settings, vectors=None):
     quality = evaluate(native)
     reasons = []
     evidence = []
@@ -103,10 +109,13 @@ def decide(page, images, native, settings):
         reasons.append('native_character_corruption')
     if images:
         evidence = image_text_evidence(page, images, native, settings)
-        if evidence:
+        if any(region.get('text_evidence', True) for region in evidence):
             reasons.append('raster_glyph_rows_outside_native_text')
+    if vectors and vectors['rows']:
+        reasons.append('vector_glyph_rows_outside_native_text')
     return {'requested': bool(reasons), 'executed': False, 'accepted': False,
             'reasons': reasons, 'skip_reason': None if reasons else 'no_uncovered_raster_text_evidence',
             'native_characters': quality['characters'], 'native_invalid_ratio': quality['invalid_ratio'],
             'image_count': len(images), 'inspected_images': min(len(images), settings.max_inspected_images),
-            'raster_text_regions': evidence, 'mode': 'full' if 'native_character_corruption' in reasons else 'partial'}
+            'unverified_raster_regions': sum(not region.get('text_evidence', True) for region in evidence),
+            'raster_text_regions': evidence, 'mode': 'full' if any(reason in reasons for reason in ('native_character_corruption', 'vector_glyph_rows_outside_native_text')) else 'partial'}
