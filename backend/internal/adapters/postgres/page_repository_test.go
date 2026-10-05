@@ -28,16 +28,16 @@ package postgres_test
 
 import (
 	"context"
- "encoding/json"
 	"database/sql"
+	"encoding/json"
 	"os"
-	"path/filepath"
 	"testing"
 
 	_ "github.com/lib/pq"
 
 	"pdf-reader/backend/internal/adapters/postgres"
 	"pdf-reader/backend/internal/domain"
+	"pdf-reader/backend/migrations"
 )
 
 func openTestDBForPages(t *testing.T) *sql.DB {
@@ -61,14 +61,8 @@ func openTestDBForPages(t *testing.T) *sql.DB {
 	}
 	lockSharedTestDB(t, ctx, db)
 
-	for _, migration := range []string{"0001_create_books.sql", "0002_create_pages.sql", "0007_reading_progress_position.sql", "0008_page_extraction.sql"} {
-		schema, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", migration))
-		if err != nil {
-			t.Fatalf("reading migration file %s: %v", migration, err)
-		}
-		if _, err := db.ExecContext(ctx, string(schema)); err != nil {
-			t.Fatalf("applying migration %s: %v", migration, err)
-		}
+	if err := postgres.ApplyMigrations(ctx, db, migrations.FS); err != nil {
+		t.Fatalf("applying migrations: %v", err)
 	}
 
 	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE pages"); err != nil {
@@ -113,7 +107,7 @@ func TestPageRepository_CreateThenListByBookID_RoundTrips(t *testing.T) {
 
 	repo := postgres.NewPageRepository(db)
 	want := newTestPage(t, book.ID, 1)
- want.Extraction = json.RawMessage(`{"strategy":"native-layout","blocks":[{"type":"table","cells":[["a","b"]]}]}`)
+	want.Extraction = json.RawMessage(`{"strategy":"native-layout","blocks":[{"type":"table","cells":[["a","b"]]}]}`)
 
 	if err := repo.Create(ctx, want); err != nil {
 		t.Fatalf("Create: unexpected error: %v", err)
@@ -128,9 +122,13 @@ func TestPageRepository_CreateThenListByBookID_RoundTrips(t *testing.T) {
 		t.Fatalf("len(pages) = %d, want 1", len(pages))
 	}
 	got := pages[0]
- var saved map[string]any
- if err := json.Unmarshal(got.Extraction, &saved); err != nil { t.Fatal(err) }
- if saved["strategy"] != "native-layout" { t.Fatalf("lost extraction: %s", got.Extraction) }
+	var saved map[string]any
+	if err := json.Unmarshal(got.Extraction, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved["strategy"] != "native-layout" {
+		t.Fatalf("lost extraction: %s", got.Extraction)
+	}
 	if got.BookID != want.BookID || got.Number != want.Number || got.Text != want.Text ||
 		got.Width != want.Width || got.Height != want.Height {
 		t.Errorf("ListByBookID = %+v, want %+v", got, want)

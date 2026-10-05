@@ -129,3 +129,20 @@ func TestExtractStructuredParagraphsAndMargins(t *testing.T) {
 		t.Fatalf("unexpected text: %q", pages[0].Text)
 	}
 }
+
+func TestMarginCandidateIsRetainedAndTableRowsStaySeparate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"schema_version":2,"pages":[{"page_number":1,"width":600,"height":800,"blocks":[{"text":"Legitimate opening","type":"header","exclude_from_text":false},{"text":"A | B\nC | D","type":"table"}]}]}`)
+	}))
+	defer server.Close()
+	pages, err := httpextractor.NewHTTPTextExtractor(server.URL, nil).Extract(context.Background(), "book", strings.NewReader("pdf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pages[0].Text != "Legitimate opening\n\nA | B\n\nC | D" {
+		t.Fatalf("text=%q", pages[0].Text)
+	}
+	if !strings.Contains(string(pages[0].Extraction), "exclude_from_text") {
+		t.Fatal("structured provenance lost")
+	}
+}

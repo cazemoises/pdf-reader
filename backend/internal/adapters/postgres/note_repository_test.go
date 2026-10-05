@@ -32,13 +32,13 @@ import (
 	"database/sql"
 	"errors"
 	"os"
-	"path/filepath"
 	"testing"
 
 	_ "github.com/lib/pq"
 
 	"pdf-reader/backend/internal/adapters/postgres"
 	"pdf-reader/backend/internal/domain"
+	"pdf-reader/backend/migrations"
 )
 
 func openTestDBForNotes(t *testing.T) *sql.DB {
@@ -62,14 +62,8 @@ func openTestDBForNotes(t *testing.T) *sql.DB {
 	}
 	lockSharedTestDB(t, ctx, db)
 
-	for _, migration := range []string{"0001_create_books.sql", "0002_create_pages.sql", "0003_create_highlights.sql", "0004_create_notes.sql", "0006_highlight_char_offsets.sql", "0007_reading_progress_position.sql", "0008_page_extraction.sql"} {
-		schema, err := os.ReadFile(filepath.Join("..", "..", "..", "migrations", migration))
-		if err != nil {
-			t.Fatalf("reading migration file %s: %v", migration, err)
-		}
-		if _, err := db.ExecContext(ctx, string(schema)); err != nil {
-			t.Fatalf("applying migration %s: %v", migration, err)
-		}
+	if err := postgres.ApplyMigrations(ctx, db, migrations.FS); err != nil {
+		t.Fatalf("applying migrations: %v", err)
 	}
 
 	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE notes"); err != nil {

@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 
@@ -65,7 +66,10 @@ func main() {
 	)
 
 	log.Printf("listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, server); err != nil {
+	httpServer := &http.Server{Addr: ":" + port, Handler: server,
+		ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 100 * time.Second,
+		WriteTimeout: 200 * time.Second, IdleTimeout: 60 * time.Second}
+	if err := httpServer.ListenAndServe(); err != nil {
 		log.Fatalf("server stopped: %v", err)
 	}
 }

@@ -14,7 +14,7 @@ if __name__ == '__main__':
     from pipeline import extract_document, ExtractionError
     try:
         result = extract_document(sys.stdin.buffer.read(settings.max_bytes + 1), settings)
-        payload = json.dumps(result, ensure_ascii=False).encode()
+        payload = json.dumps(result, ensure_ascii=False, allow_nan=False).encode()
         if len(payload) > settings.max_output_bytes:
             raise ExtractionError('output size limit exceeded')
         sys.stdout.buffer.write(payload)

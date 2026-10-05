@@ -69,3 +69,17 @@ func nullableExtraction(data []byte) any {
 	}
 	return string(data)
 }
+
+// FindByBookIDAndNumber avoids allocating every page's JSONB for one-page API reads.
+func (r *PageRepository) FindByBookIDAndNumber(ctx context.Context, bookID string, number int) (*domain.Page, error) {
+	var page domain.Page
+	var extraction []byte
+	err := r.db.QueryRowContext(ctx, `SELECT book_id, number, text, width, height, extraction
+ FROM pages WHERE book_id = $1 AND number = $2`, bookID, number).Scan(
+		&page.BookID, &page.Number, &page.Text, &page.Width, &page.Height, &extraction)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: finding page: %w", err)
+	}
+	page.Extraction = extraction
+	return &page, nil
+}

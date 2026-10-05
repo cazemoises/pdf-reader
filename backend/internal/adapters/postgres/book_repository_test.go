@@ -10,13 +10,13 @@
 //     override to it, or run a standalone container with matching
 //     credentials:
 //
-//       docker run --rm -d --name pdfreader-postgres \
-//         -e POSTGRES_USER=pdfreader -e POSTGRES_PASSWORD=pdfreader -e POSTGRES_DB=pdfreader \
-//         -p 5432:5432 postgres:16-alpine
+//     docker run --rm -d --name pdfreader-postgres \
+//     -e POSTGRES_USER=pdfreader -e POSTGRES_PASSWORD=pdfreader -e POSTGRES_DB=pdfreader \
+//     -p 5432:5432 postgres:16-alpine
 //
 //  2. Export DATABASE_URL pointing at it, e.g.:
 //
-//       export DATABASE_URL="postgres://pdfreader:pdfreader@localhost:5432/pdfreader?sslmode=disable"
+//     export DATABASE_URL="postgres://pdfreader:pdfreader@localhost:5432/pdfreader?sslmode=disable"
 //
 //  3. Run: go test ./internal/adapters/postgres/...
 //

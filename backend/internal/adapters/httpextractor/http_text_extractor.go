@@ -45,8 +45,9 @@ type extractPage struct {
 }
 
 type extractBlock struct {
-	Text string `json:"text"`
-	Type string `json:"type"`
+	Text            string `json:"text"`
+	Type            string `json:"type"`
+	ExcludeFromText *bool  `json:"exclude_from_text"`
 }
 
 // Extract sends source's content to the extractor service and converts the
@@ -95,7 +96,11 @@ func (e *HTTPTextExtractor) Extract(ctx context.Context, bookID string, source i
 		}
 		texts := make([]string, 0, len(p.Blocks))
 		for _, b := range p.Blocks {
-			if b.Type != "header" && b.Type != "footer" {
+			exclude := b.Type == "header" || b.Type == "footer"
+			if b.ExcludeFromText != nil {
+				exclude = *b.ExcludeFromText
+			}
+			if !exclude {
 				text := b.Text
 				if parsed.SchemaVersion >= 2 && b.Type == "table" {
 					text = strings.ReplaceAll(text, "\n", "\n\n")
@@ -130,8 +135,12 @@ func buildMultipartBody(source io.Reader) (*bytes.Buffer, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	if _, err := io.Copy(part, source); err != nil {
+	written, err := io.Copy(part, io.LimitReader(source, 32*1024*1024+1))
+	if err != nil {
 		return nil, "", err
+	}
+	if written > 32*1024*1024 {
+		return nil, "", fmt.Errorf("PDF size limit exceeded")
 	}
 	if err := writer.Close(); err != nil {
 		return nil, "", err
