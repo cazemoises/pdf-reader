@@ -2,6 +2,7 @@ package httpextractor_test
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -110,5 +111,21 @@ func TestExtract_ReturnsErrorOnMalformedJSON(t *testing.T) {
 	_, err := extractor.Extract(context.Background(), "book-1", strings.NewReader("fake pdf bytes"))
 	if err == nil {
 		t.Fatal("expected error for malformed JSON, got nil")
+	}
+}
+
+func TestExtractStructuredParagraphsAndMargins(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"schema_version":2,"pages":[{"page_number":1,"width":600,"height":800,"blocks":[{"text":"Header","type":"header"},{"text":"First","type":"paragraph"},{"text":"Second","type":"paragraph"},{"text":"1","type":"footer"}]}]}`)
+	}))
+	defer server.Close()
+	extractor := httpextractor.NewHTTPTextExtractor(server.URL, nil)
+	pages, err := extractor.Extract(context.Background(), "book", strings.NewReader("pdf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pages[0].Text != "First\n\nSecond" {
+		t.Fatalf("unexpected text: %q", pages[0].Text)
 	}
 }

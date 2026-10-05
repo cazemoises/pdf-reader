@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -75,9 +76,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateBook(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	r.Body = http.MaxBytesReader(w, r.Body, 33*1024*1024)
+	defer func() {
+		if r.MultipartForm != nil {
+			_ = r.MultipartForm.RemoveAll()
+		}
+	}()
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
+		var sizeError *http.MaxBytesError
+		if errors.As(err, &sizeError) {
+			http.Error(w, "PDF upload too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "missing file field", http.StatusBadRequest)
 		return
 	}
