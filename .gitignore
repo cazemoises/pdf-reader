@@ -17,3 +17,6 @@ artifacts/
 extractor/.pytest_cache/
 extractor/tests/__pycache__/
 extractor/tools/__pycache__/
+
+# Private real-document validation corpus
+validation-corpus/

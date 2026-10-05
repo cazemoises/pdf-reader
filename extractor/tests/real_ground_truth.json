@@ -1,0 +1,78 @@
+{
+  "validation": "Manual visual validation, 2026-10-05; minimal anchors, not full transcription. No accuracy percentage is supported.",
+  "pages": [
+    {
+      "sha256": "25ca296fd415afa1e943e4daf89169fa92f63b774bda1ba2f371b5d9563375f0",
+      "page": 4,
+      "selection_reason": "Visible vector text, completely absent in production",
+      "manually_validated_anchors": [
+        "Sumário",
+        "Natureza e cultura",
+        "Fogo, cozinha, civilização"
+      ],
+      "expected_relationship": "Headings exist in this order; production currently returns no text."
+    },
+    {
+      "sha256": "24175689c4bdc807a3736e6cc055c25e9e68f917a13795b23703ebba54b77d35",
+      "page": 4,
+      "selection_reason": "Unruled comparative table",
+      "manually_validated_anchors": [
+        "Dimensão",
+        "Assado",
+        "Cozido em água"
+      ],
+      "expected_relationship": "Three header columns; each row must retain its column association."
+    },
+    {
+      "sha256": "a9e8ae9b0409be6ebe04893cc4e4e307404121ae50fa9b6a480d7456687e7e8a",
+      "page": 19,
+      "selection_reason": "Dense unruled table",
+      "manually_validated_anchors": [
+        "Referência",
+        "Função no capítulo",
+        "Localização no PDF"
+      ],
+      "expected_relationship": "Three header columns; visual row associations are the reference."
+    },
+    {
+      "sha256": "6227b441dd2a359197842253c3f31bf661383acbeec6ec107aced04b65677ed7",
+      "page": 2,
+      "selection_reason": "Successfully recognized ruled table",
+      "manually_validated_anchors": [
+        "Ontologia Alimentar",
+        "Cozido / Fabricado",
+        "Cru / In Natura"
+      ],
+      "expected_relationship": "First column concept relates to the two adjacent contrast cells."
+    },
+    {
+      "sha256": "8559fd80b2ae290f7f5de62d5582fbece46d89d34c52863ed5bfc5aba06dc644",
+      "page": 5,
+      "selection_reason": "Raised note reference misplaced",
+      "manually_validated_anchors": [
+        "hierarquia de divindades",
+        "6"
+      ],
+      "expected_relationship": "Reference 6 follows divindades, rather than preceding hierarquia."
+    },
+    {
+      "sha256": "0a3e5b35077a662f5eaccc9cbfa7e240ed4aa1ed66e20113284a236465726c60",
+      "page": 50,
+      "selection_reason": "Justified fragments and mixed raster/native text",
+      "manually_validated_anchors": [
+        "Aspectos positivos: justiça, discernimento",
+        "Xangô"
+      ],
+      "expected_relationship": "Positive attributes remain contiguous; graphic label preserved without unrelated marks."
+    },
+    {
+      "sha256": "0a3e5b35077a662f5eaccc9cbfa7e240ed4aa1ed66e20113284a236465726c60",
+      "page": 98,
+      "selection_reason": "Centered heading displaced below songs",
+      "manually_validated_anchors": [
+        "Pontos de Iansã"
+      ],
+      "expected_relationship": "Section heading precedes the songs."
+    }
+  ]
+}
