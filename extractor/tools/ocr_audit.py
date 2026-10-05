@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path[:0] = [str(Path(__file__).resolve().parents[1]), str(Path(__file__).resolve().parents[1]/'tests')]
 import pymupdf
 from corpus import corpus
-from adversarial import image_pdf, corrupted_font, columns, margins, ruled_table
+from adversarial import image_pdf, corrupted_font, columns, margins, ruled_table, raster, pdf_page
 from pipeline import extract_document, native_blocks
 
 cases = {name: data for name, (data, _) in corpus().items()}
@@ -16,6 +16,9 @@ cases.update({'decorative': image_pdf(native='Native text.', decorative=True),
               'corrupt_font': corrupted_font(), 'nul_font': corrupted_font(nul=True),
               'three_columns': columns()[0], 'different_margins': margins(),
               'multiline_cells': ruled_table(multiline=True, empty=True)})
+for gray in (0.6, 0.7):
+    image = raster('SCANNED GRAY TEXT', color=(gray, gray, gray))
+    cases[f'gray_scan_{gray}'] = pdf_page(lambda page: page.insert_image(pymupdf.Rect(0, 100, 600, 700), stream=image))
 for rotation in (0, 90, 180, 270): cases[f'portuguese_scan_{rotation}'] = image_pdf(rotation=rotation)
 rows = {}
 for name, data in cases.items():

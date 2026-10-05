@@ -12,6 +12,11 @@ frontend_image="pdf-reader-frontend-test:$suffix"
 extractor="pdf-reader-test-extractor-$suffix"
 backend="pdf-reader-test-backend-$suffix"
 cleanup() {
+  result=$?
+  if [ "$result" -ne 0 ]; then
+    docker logs "$extractor" > artifacts/extractor-failure.log 2>&1 || true
+    docker logs "$backend" > artifacts/backend-failure.log 2>&1 || true
+  fi
   docker rm -f "$backend" "$extractor" "$database" >/dev/null 2>&1 || true
   docker network rm "$network" >/dev/null 2>&1 || true
   docker image rm "$extractor_image" "$backend_image" "$frontend_image" "$backend_runtime" "$extractor_runtime" >/dev/null 2>&1 || true
@@ -44,6 +49,12 @@ docker run --rm --network "$network" -e DATABASE_URL="postgres://pdfreader:pdfre
 docker build --target production -t "$backend_runtime" backend
 docker build --target production -t "$extractor_runtime" extractor
 docker run -d --name "$extractor" --network "$network" --memory=2g --cpus=2 --pids-limit=64 --read-only --tmpfs /tmp:size=96m,mode=1777 --cap-drop=ALL --security-opt=no-new-privileges "$extractor_runtime" uvicorn main:app --host 0.0.0.0 --port 8000 >/dev/null
+ready=false
+for attempt in {1..30}; do
+  if docker exec "$extractor" python -c 'import urllib.request; urllib.request.urlopen("http://localhost:8000/health", timeout=2).close()' >/dev/null 2>&1; then ready=true; break; fi
+  sleep 1
+done
+"$ready"
 docker run -d --name "$backend" --network "$network" -e DATABASE_URL="postgres://pdfreader:pdfreader@$database:5432/pdfreader?sslmode=disable" -e EXTRACTOR_URL="http://$extractor:8000" -e STORAGE_DIR=/tmp/pdf-reader-data "$backend_runtime" >/dev/null
 docker run --rm --network "$network" "$extractor_image" python tools/smoke.py "http://$backend:8080"
 docker exec -i "$extractor" python - < extractor/tools/runtime_security.py > artifacts/runtime-security.json

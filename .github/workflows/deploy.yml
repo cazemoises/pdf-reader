@@ -31,6 +31,7 @@ jobs:
             artifacts/frontend-lint.txt
             artifacts/runtime-security.json
             artifacts/concurrency.json
+            artifacts/*-failure.log
   deploy:
     needs: validate
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
